@@ -1,0 +1,17 @@
+name: LiteLLM
+
+image: ghcr.io/berriai/litellm
+
+version_key: litellm
+
+health:
+
+  endpoint: /
+
+depends_on:
+
+  - postgres
+
+documentation:
+
+  https://docs.litellm.ai/

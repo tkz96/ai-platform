@@ -1,0 +1,16 @@
+extends: default
+
+ignore: |
+  .venv/
+  data/
+  backups/
+  state/
+  .git/
+
+rules:
+  document-start: disable
+
+  line-length:
+    max: 100
+
+  truthy: disable

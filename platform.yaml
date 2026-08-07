@@ -1,0 +1,28 @@
+name: xynotech-ai-platform
+
+network:
+  name: ai-platform
+
+services:
+
+  - postgres
+
+  - clickhouse
+
+  - redis
+
+  - langfuse
+
+  - litellm
+
+future:
+
+  - caddy
+
+  - prometheus
+
+  - grafana
+
+  - searxng
+
+  - qdrant

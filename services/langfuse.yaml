@@ -1,0 +1,21 @@
+name: Langfuse
+
+image: ghcr.io/langfuse/langfuse
+
+version_key: langfuse
+
+health:
+
+  endpoint: /api/public/health
+
+depends_on:
+
+  - postgres
+
+  - clickhouse
+
+  - redis
+
+documentation:
+
+  https://langfuse.com/docs

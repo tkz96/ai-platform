@@ -1,0 +1,28 @@
+[project]
+name = "ai-platform"
+version = "0.1.0"
+description = "Self-hosted AI Platform"
+requires-python = ">=3.12"
+
+
+dependencies = ["jinja2", "pyyaml", "rich", "typer"]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.12.10",
+  "pytest>=8.4.1",
+  "pre-commit>=4.3.0",
+  "yamllint>=1.37.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [".venv", "data", "backups", "state"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

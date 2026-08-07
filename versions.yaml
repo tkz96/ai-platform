@@ -1,0 +1,21 @@
+platform:
+  version: 0.1.0
+
+services:
+  litellm:
+    version: "1.95.0"
+
+  langfuse:
+    version: "3.6.2"
+
+  postgres:
+    version: "17"
+
+  clickhouse:
+    version: "25.7"
+
+  redis:
+    version: "8.2"
+
+  caddy:
+    version: "2.10"
