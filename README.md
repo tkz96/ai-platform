@@ -1,448 +1,150 @@
 # AI Platform
 
-> A reproducible, self-hosted AI infrastructure platform for running inference, routing requests, observability, and future AI services.
+Self-hosted AI infrastructure. Runs inference, request routing, and observability as containers on a single machine.
 
----
+## Purpose
 
-# Overview
+This repository provisions and manages an AI platform with one command.
 
-This repository provisions and manages a self-hosted AI platform.
+It replaces manual server configuration with declarative YAML and automated rendering.
 
-The project is designed around several guiding principles:
+## Features
 
-- Infrastructure as Code
-- Reproducibility
-- Minimal manual configuration
-- Idempotent deployments
-- Separation of configuration from implementation
-- Official upstream images whenever possible
-- GitOps workflow
-- Local-first development
-- Long-term maintainability
+- **Configuration-driven**: YAML defines the platform. Python builds it. Jinja2 renders it.
+- **Reproducible**: Clone, install, deploy. Every run produces the same result.
+- **Single command**: `make install` deploys the full stack.
 
-The objective is that a fresh machine should be able to become a fully functioning AI server by cloning this repository and running a single bootstrap command.
-
----
-
-# High Level Architecture
-
-```text
-                Developers
-        ┌─────────────────────┐
-        │ VS Code             │
-        │ Antigravity         │
-        │ Claude             │
-        │ OpenHands          │
-        └─────────┬───────────┘
-                  │
-                  ▼
-
-        ┌─────────────────────────┐
-        │      Mac Mini           │
-        │-------------------------│
-        │ LiteLLM                 │
-        │ Langfuse                │
-        │ Caddy                   │
-        │ PostgreSQL              │
-        │ Redis                   │
-        │ ClickHouse              │
-        │ Future Services         │
-        └─────────┬───────────────┘
-                  │
-                  ▼
-
-        ┌─────────────────────────┐
-        │   Inference Machine      │
-        │-------------------------│
-        │ llama.cpp               │
-        │ Qwen                    │
-        │ Future Models           │
-        └─────────────────────────┘
-```
-
----
-
-# Design Principles
-
-This repository follows a few non-negotiable rules.
-
-## Single Responsibility
-
-Each machine performs one job.
-
-Examples:
-
-- inference
-- routing
-- observability
-- development
-
----
-
-## Immutable Infrastructure
-
-Machines should never be manually configured.
-
-All changes must originate from this repository.
-
----
-
-## Configuration Driven
-
-Behavior belongs inside YAML.
-
-Logic belongs inside Python.
-
-Templates belong inside `templates/`.
-
----
-
-## Reproducibility
-
-Any developer should be able to execute
-
-```bash
-git clone ...
-uv sync
-uv run python bootstrap.py install
-```
-
-and obtain the exact same platform.
-
----
-
-# Repository Structure
+## Repository Layout
 
 ```
 .
-├── bootstrap.py
-├── platform/
-├── services/
-├── templates/
-├── configs/
-├── docs/
-├── tests/
-├── scripts/
-├── data/
-├── backups/
-├── state/
-├── versions.yaml
-├── platform.yaml
-└── pyproject.toml
+├── platform.yaml          # Platform configuration (source)
+├── versions.yaml          # Service versions (source)
+├── services/              # Service manifests (source)
+├── templates/             # Jinja2 templates (source)
+├── platform/              # Python CLI and rendering logic
+├── tests/                 # Automated tests
+├── docs/                  # Architecture, operations, decisions
+├── configs/               # GENERATED — do not edit
+├── compose.yaml           # GENERATED — do not edit
+├── bootstrap.py           # CLI entry point
+├── Makefile               # Developer commands
+└── pyproject.toml         # Python project metadata
 ```
 
----
+> [!CAUTION]
+> `compose.yaml` and `configs/` are **generated files**. Never edit them directly.
+> Edit `platform.yaml`, `versions.yaml`, `services/*.yaml`, or `templates/` instead.
 
-# Directory Responsibilities
+## Requirements
 
-## platform/
+- Python ≥ 3.12
+- [uv](https://docs.astral.sh/uv/)
+- [Podman](https://podman.io/) with Podman Compose
 
-Python source code.
+## Quick Start
 
-Contains:
-
-- CLI
-- configuration loading
-- validation
-- rendering
-- orchestration
-- service abstractions
-
----
-
-## templates/
-
-Jinja templates used to generate configuration files.
-
-Generated files should **never** be edited manually.
-
----
-
-## configs/
-
-Service configuration.
-
-Examples:
-
-- LiteLLM
-- Caddy
-- Langfuse
-
----
-
-## services/
-
-Defines each deployable service.
-
-Each service has its own manifest.
-
----
-
-## docs/
-
-Project documentation.
-
-Architecture decisions belong here.
-
----
-
-## tests/
-
-Automated tests.
-
----
-
-## data/
-
-Persistent volumes.
-
-Ignored by Git.
-
----
-
-## backups/
-
-Generated backups.
-
-Ignored by Git.
-
----
-
-# Technology Stack
-
-| Component | Purpose |
-|------------|----------|
-| Python | Platform automation |
-| uv | Dependency management |
-| Podman | Containers |
-| Podman Compose | Orchestration |
-| LiteLLM | AI routing |
-| Langfuse | Observability |
-| PostgreSQL | Metadata |
-| Redis | Cache |
-| ClickHouse | Analytics |
-| Caddy | Reverse proxy |
-| GitHub Actions | CI/CD |
-
----
-
-# Development Workflow
-
-Feature branches only.
-
-```
-feature/*
-```
-
-↓
-
-Open Pull Request
-
-↓
-
-CI passes
-
-↓
-
-Merge into main
-
-↓
-
-Deploy
-
----
-
-# Local Development
-
-Clone
+### 1. Clone the repository
 
 ```bash
 git clone git@github.com:<user>/ai-platform.git
+cd ai-platform
 ```
 
-Install dependencies
+### 2. Install Python dependencies
 
 ```bash
 uv sync
 ```
 
-Run checks
+### 3. Create the environment file
 
 ```bash
-uv run ruff check .
-uv run ruff format .
-uv run yamllint .
-uv run pytest
+cp .env.example .env
 ```
 
----
+Edit `.env` and replace all placeholder values with real credentials.
 
-# Bootstrap Commands
-
-Eventually all platform management should happen through
+### 4. Render configuration
 
 ```bash
-uv run python bootstrap.py
+make render
 ```
 
-Planned commands
+This validates `platform.yaml` and generates `compose.yaml` and `configs/`.
 
-```text
-install
-update
-verify
-backup
-restore
-status
-render
-generate
-destroy
+### 5. Deploy
+
+```bash
+make install
 ```
 
----
+### 6. Verify
 
-# Coding Standards
-
-Python
-
-- Ruff
-- Type hints
-- Small functions
-- No duplicated logic
-
-YAML
-
-- yamllint
-- Two-space indentation
-
-Templates
-
-- Pure Jinja
-- No business logic
-
----
-
-# Version Management
-
-Service versions are defined in
-
-```
-versions.yaml
+```bash
+make status
 ```
 
-The code should never hardcode versions.
+## Daily Development
 
----
+### Make a change
 
-# Configuration
+1. Create a feature branch.
+2. Edit source files (`platform.yaml`, `versions.yaml`, `services/*.yaml`, `templates/`).
+3. Render and validate.
+4. Commit and open a pull request.
 
-Platform configuration is defined in
+### Useful commands
 
+| Command | Action |
+|---|---|
+| `make render` | Validate configuration and render templates |
+| `make install` | Render and deploy containers |
+| `make status` | Check service health |
+| `make verify` | Validate schema and run health checks |
+| `make update` | Pull latest images and redeploy |
+| `make backup` | Backup databases and state |
+| `make restore` | Restore from backup |
+| `make destroy` | Remove all containers, networks, and volumes |
+
+## Validation
+
+Run these checks before every commit:
+
+```bash
+make lint    # Ruff lint + format check + yamllint
+make test    # Pytest suite
 ```
-platform.yaml
+
+Or run both:
+
+```bash
+make lint && make test
 ```
 
-The platform should be configurable without modifying Python code.
+### Pre-commit checklist
 
----
+- [ ] `make lint` passes
+- [ ] `make test` passes
+- [ ] `make render` succeeds
+- [ ] No secrets in committed files
 
-# CI
+## Deployment
 
-Every commit should validate
+`make install` renders configuration and starts all containers with Podman Compose.
 
-- Ruff
-- Formatting
-- YAML
-- Tests
-- Template rendering
-- Configuration schema
+For operations procedures, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-Deployment should only occur after successful validation.
+## Documentation
 
----
+| Document | Contents |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, service topology, data flow |
+| [OPERATIONS.md](docs/OPERATIONS.md) | Deployment, backup, restore, monitoring |
+| [DECISIONS.md](docs/DECISIONS.md) | Architecture decision records |
+| [ROADMAP.md](docs/ROADMAP.md) | Planned work and milestones |
+| [AGENTS.md](AGENTS.md) | Rules for AI coding agents |
 
-# Backup Strategy
+## License
 
-Persistent services should support automated backup.
-
-Initially
-
-- PostgreSQL
-- ClickHouse
-
-Later
-
-- Redis snapshots
-- LiteLLM configuration
-- Langfuse metadata
-
----
-
-# Security Goals
-
-- No secrets committed
-- SSH key authentication
-- Principle of least privilege
-- Official container images
-- Configuration validation before deployment
-
----
-
-# Roadmap
-
-## Phase 1
-
-- Repository
-- Bootstrap framework
-- Configuration rendering
-
-## Phase 2
-
-- LiteLLM
-- Langfuse
-- Caddy
-
-## Phase 3
-
-- GitHub Actions
-- Automatic deployment
-
-## Phase 4
-
-- Monitoring
-- Backups
-- Rollbacks
-
-## Phase 5
-
-- Kubernetes (optional)
-
----
-
-# Contributing
-
-1. Create feature branch
-2. Make changes
-3. Run validation
-4. Submit Pull Request
-
----
-
-# License
-
-Specify project license here.
-
----
-
-# Acknowledgements
-
-This project intentionally builds on official upstream projects whenever possible.
-
-- LiteLLM
-- Langfuse
-- Podman
-- llama.cpp
-- PostgreSQL
-- Redis
-- ClickHouse
-- Caddy
+[MIT](LICENSE)

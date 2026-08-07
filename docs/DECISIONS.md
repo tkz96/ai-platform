@@ -1,81 +1,98 @@
-# Architecture Decisions
+# Architecture Decision Records
 
-This document records important architectural decisions.
+This document records the architectural decisions for the AI Platform.
 
-Future AI agents should consult this file before making major changes.
+## Summary
 
----
-
-# ADR-001
-
-## Decision
-
-Inference will be isolated onto dedicated hardware.
-
-## Reason
-
-Inference workloads should not compete with infrastructure workloads.
+| ADR | Title | Decision |
+|---|---|---|
+| [ADR-001](#adr-001-isolated-inference-hardware) | Isolated Inference Hardware | Run inference on dedicated hardware |
+| [ADR-002](#adr-002-litellm-as-single-api-gateway) | LiteLLM Gateway | Route all traffic through LiteLLM |
+| [ADR-003](#adr-003-podman-compose-orchestration) | Podman Compose | Use Podman Compose for container orchestration |
+| [ADR-004](#adr-004-immutable-containers) | Immutable Containers | Treat containers as disposable, stateless runtime units |
+| [ADR-005](#adr-005-external-persistent-storage) | External Storage | Store persistent volume data outside containers |
+| [ADR-006](#adr-006-private-inference-servers) | Private Inference | Restrict direct access to inference servers |
 
 ---
 
-# ADR-002
+## ADR-001: Isolated Inference Hardware
 
-## Decision
+### Context
+Inference requires dedicated GPU resources. Co-locating database or web services creates resource contention.
 
-LiteLLM is the single API gateway.
+### Decision
+Separate control plane services from inference hardware.
 
-## Reason
-
-Clients should not need to know where inference occurs.
-
----
-
-# ADR-003
-
-## Decision
-
-Infrastructure is managed using Podman Compose.
-
-## Reason
-
-Declarative infrastructure is reproducible and easier to maintain.
+### Consequences
+- Control plane services run on dedicated hardware (Mac Mini).
+- Model execution runs on dedicated GPU hardware.
 
 ---
 
-# ADR-004
+## ADR-002: LiteLLM as Single API Gateway
 
-## Decision
+### Context
+Clients need a unified interface for multiple backend models without tracking individual server addresses.
 
-Containers are immutable.
+### Decision
+Use LiteLLM as the single OpenAI-compatible API gateway.
 
-## Reason
-
-Configuration should be version controlled.
-
-Running containers should never become unique snowflakes.
-
----
-
-# ADR-005
-
-## Decision
-
-Persistent data is stored outside containers.
-
-## Reason
-
-Containers must remain disposable.
+### Consequences
+- Clients interact only with the gateway endpoint.
+- Enables central authentication, rate limiting, and observability.
 
 ---
 
-# ADR-006
+## ADR-003: Podman Compose Orchestration
 
-## Decision
+### Context
+The platform requires light, daemonless container management without Kubernetes complexity.
 
-Inference servers are private.
+### Decision
+Use Podman Compose for service orchestration.
 
-## Reason
+### Consequences
+- Simple YAML container declarations.
+- Support for rootless container execution.
 
-All access should flow through LiteLLM.
+---
 
-This enables authentication, observability, rate limiting, and future load balancing.
+## ADR-004: Immutable Containers
+
+### Context
+Manual configuration changes on running containers cause configuration drift.
+
+### Decision
+Define all container configurations in source files. Never modify running containers.
+
+### Consequences
+- Redeploying containers replaces them entirely.
+- Configuration changes require version control updates.
+
+---
+
+## ADR-005: External Persistent Storage
+
+### Context
+Container destruction must not cause data loss for databases and service state.
+
+### Decision
+Mount persistent host directories under `./data/` into containers.
+
+### Consequences
+- Containers remain disposable.
+- Database storage persists across container restarts and updates.
+
+---
+
+## ADR-006: Private Inference Servers
+
+### Context
+Direct client access to inference servers bypasses authentication and tracing.
+
+### Decision
+Restrict network access so only LiteLLM can reach inference servers.
+
+### Consequences
+- Clients cannot bypass routing, logging, or authentication.
+- Simplifies network firewall rules.
