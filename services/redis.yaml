@@ -1,0 +1,14 @@
+name: redis
+image: docker.io/library/redis
+version_key: redis
+
+ports:
+  - host_port: 6379
+    container_port: 6379
+
+volumes:
+  - source: ./data/redis
+    target: /data
+
+health:
+  command: ["redis-cli", "ping"]

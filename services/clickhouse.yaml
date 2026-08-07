@@ -1,0 +1,20 @@
+name: clickhouse
+image: docker.io/clickhouse/clickhouse-server
+version_key: clickhouse
+
+ports:
+  - host_port: 8123
+    container_port: 8123
+  - host_port: 9000
+    container_port: 9000
+
+volumes:
+  - source: ./data/clickhouse
+    target: /var/lib/clickhouse
+
+environment:
+  - CLICKHOUSE_USER
+  - CLICKHOUSE_PASSWORD
+
+health:
+  endpoint: /ping

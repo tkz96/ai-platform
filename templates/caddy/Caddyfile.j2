@@ -1,0 +1,5 @@
+{{ platform.domain }} {
+    reverse_proxy /v1/* litellm:4000
+    reverse_proxy /langfuse/* langfuse:3000
+    reverse_proxy * litellm:4000
+}

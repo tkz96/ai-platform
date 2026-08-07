@@ -1,0 +1,20 @@
+name: caddy
+image: docker.io/library/caddy
+version_key: caddy
+
+ports:
+  - host_port: 80
+    container_port: 80
+  - host_port: 443
+    container_port: 443
+
+volumes:
+  - source: ./configs/caddy/Caddyfile
+    target: /etc/caddy/Caddyfile
+
+depends_on:
+  - litellm
+  - langfuse
+
+health:
+  endpoint: /

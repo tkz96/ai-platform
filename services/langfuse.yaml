@@ -1,21 +1,23 @@
-name: Langfuse
-
+name: langfuse
 image: ghcr.io/langfuse/langfuse
-
 version_key: langfuse
 
-health:
+ports:
+  - host_port: 3000
+    container_port: 3000
 
-  endpoint: /api/public/health
+environment:
+  - LANGFUSE_SECRET_KEY
+  - LANGFUSE_SALT
+  - NEXTAUTH_SECRET
+  - NEXTAUTH_URL
 
 depends_on:
-
   - postgres
-
   - clickhouse
-
   - redis
 
-documentation:
+health:
+  endpoint: /api/public/health
 
-  https://langfuse.com/docs
+documentation: https://langfuse.com/docs

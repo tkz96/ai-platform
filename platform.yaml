@@ -1,28 +1,17 @@
 name: xynotech-ai-platform
+domain: ai.xynotech.internal
+default_model: qwen2.5-coder
 
-network:
-  name: ai-platform
+inference:
+  host: 127.0.0.1
+  port: 8080
+
+network: ai-platform
 
 services:
-
   - postgres
-
   - clickhouse
-
   - redis
-
   - langfuse
-
   - litellm
-
-future:
-
   - caddy
-
-  - prometheus
-
-  - grafana
-
-  - searxng
-
-  - qdrant

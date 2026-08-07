@@ -1,0 +1,19 @@
+name: postgres
+image: docker.io/library/postgres
+version_key: postgres
+
+ports:
+  - host_port: 5432
+    container_port: 5432
+
+volumes:
+  - source: ./data/postgres
+    target: /var/lib/postgresql/data
+
+environment:
+  - POSTGRES_USER
+  - POSTGRES_PASSWORD
+  - POSTGRES_DB
+
+health:
+  command: ["pg_isready", "-U", "postgres"]

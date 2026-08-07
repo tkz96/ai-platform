@@ -1,17 +1,23 @@
-name: LiteLLM
-
+name: litellm
 image: ghcr.io/berriai/litellm
-
 version_key: litellm
 
-health:
+ports:
+  - host_port: 4000
+    container_port: 4000
 
-  endpoint: /
+volumes:
+  - source: ./configs/litellm/config.yaml
+    target: /app/config.yaml
+
+environment:
+  - LITELLM_MASTER_KEY
+  - LITELLM_DATABASE_URL
 
 depends_on:
-
   - postgres
 
-documentation:
+health:
+  endpoint: /health/liveliness
 
-  https://docs.litellm.ai/
+documentation: https://docs.litellm.ai/
