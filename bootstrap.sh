@@ -21,7 +21,7 @@ set -euo pipefail
 # ── Paths ───────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
+export PROJECT_ROOT="$SCRIPT_DIR"
 INSTALL_DIR="$SCRIPT_DIR/scripts/install"
 LIB_DIR="$INSTALL_DIR/lib"
 
@@ -39,13 +39,42 @@ BOOTSTRAP_VERSION="0.1.0"
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 get_platform_domain() {
-  # Read domain from platform.yaml — single source of truth
-  python3 -c "
-import yaml
-with open('$PROJECT_ROOT/platform.yaml') as f:
-    data = yaml.safe_load(f)
-print(data.get('domain', 'localhost'))
-" 2>/dev/null || echo "localhost"
+  # Read domain from platform.yaml using yq — single source of truth
+  yq -r '.domain // "localhost"' "$PROJECT_ROOT/platform.yaml" 2>/dev/null || echo "localhost"
+}
+
+# ── Dependency Check ───────────────────────────────────────────────────────
+
+run_dependency_check() {
+  ui_section "Dependency Check"
+
+  local missing=()
+
+  ui_dependency_check "Git" "command -v git" "git --version | awk '{print \$3}'" || missing+=("git")
+  ui_dependency_check "Homebrew" "command -v brew" "brew --version | head -1 | awk '{print \$2}'" || missing+=("brew")
+  ui_dependency_check "Python 3.12+" "command -v python3" "python3 --version | awk '{print \$2}'" || missing+=("python3")
+  ui_dependency_check "uv" "command -v uv" "uv --version | awk '{print \$2}'" || missing+=("uv")
+  ui_dependency_check "Podman" "command -v podman" "podman --version | head -1" || missing+=("podman")
+  ui_dependency_check "jq" "command -v jq" "jq --version" || missing+=("jq")
+  ui_dependency_check "yq" "command -v yq" "yq --version | head -1" || missing+=("yq")
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo
+    ui_warning "The following tools are missing:"
+    for tool in "${missing[@]}"; do
+      echo -e "    ${RED}${SYM_FAIL}${RESET} $tool"
+    done
+    echo
+    if ui_confirm "Install missing tools automatically?"; then
+      return 1  # Signal that install phases should run
+    else
+      ui_fatal "Cannot continue without required tools."
+    fi
+  else
+    echo
+    ui_success "All dependencies are installed."
+    return 0
+  fi
 }
 
 # ── Help ────────────────────────────────────────────────────────────────────
@@ -82,7 +111,8 @@ EOF
 # ── Install ─────────────────────────────────────────────────────────────────
 
 run_install() {
-  ui_header "Xynotech AI Platform — Installation"
+  # Show ASCII art splash
+  ui_splash
 
   # Show system info and confirm
   ui_system_info
@@ -116,8 +146,7 @@ run_install() {
 
     if ! state_run_phase "$phase_name" "$INSTALL_DIR/$phase_script"; then
       state_rollback "$phase_name"
-      ui_error "Installation failed at phase: $phase_name"
-      exit 1
+      ui_fatal "Installation failed at phase: $phase_name"
     fi
   done
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # UI utilities for bootstrap.sh
-# Provides colors, boxes, prompts, spinners, and status indicators.
+# Provides colors, boxes, prompts, spinners, ASCII art, and status indicators.
 
 set -euo pipefail
 
@@ -15,6 +15,7 @@ if [[ -t 1 ]]; then
   BLUE='\033[34m'
   CYAN='\033[36m'
   WHITE='\033[37m'
+  MAGENTA='\033[35m'
   RESET='\033[0m'
 else
   BOLD=''
@@ -25,6 +26,7 @@ else
   BLUE=''
   CYAN=''
   WHITE=''
+  MAGENTA=''
   RESET=''
 fi
 
@@ -34,6 +36,7 @@ SYM_OK="✓"
 SYM_WARN="⚠"
 SYM_FAIL="✗"
 SYM_ARROW="→"
+SYM_DOT="•"
 
 # ── Box Drawing ─────────────────────────────────────────────────────────────
 
@@ -54,6 +57,31 @@ ui_section() {
   local title="$1"
   echo
   echo -e "${BOLD}${WHITE}━━━ ${title} ━━━${RESET}"
+  echo
+}
+
+# ── ASCII Art Splash ────────────────────────────────────────────────────────
+
+ui_splash() {
+  local line
+  line=$(printf '━%.0s' $(seq 1 $BOX_WIDTH))
+
+  echo
+  echo -e "${BOLD}${CYAN}${line}${RESET}"
+  echo
+  echo -e "${BOLD}${MAGENTA}"
+  echo -e "    █████╗ ██╗   ██╗██████╗  ██████╗ ███████╗"
+  echo -e "   ██╔══██╗██║   ██║██╔══██╗██╔═══██╗██╔════╝"
+  echo -e "   ███████║██║   ██║██████╔╝██║   ██║███████╗"
+  echo -e "   ██╔══██║██║   ██║██╔══██╗██║   ██║╚════██║"
+  echo -e "   ██║  ██║╚██████╔╝██║  ██║╚██████╔╝███████║"
+  echo -e "   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝"
+  echo -e "${RESET}"
+  echo -e "${BOLD}${CYAN}  AI Platform — Self-Hosted AI Infrastructure${RESET}"
+  echo -e "${BOLD}${CYAN}${line}${RESET}"
+  echo
+  echo -e "  ${DIM}Version: 0.1.0${RESET}"
+  echo -e "  ${DIM}Repository: github.com/tkz96/ai-platform${RESET}"
   echo
 }
 
@@ -80,7 +108,13 @@ ui_step() {
 }
 
 ui_fatal() {
-  echo -e "  ${RED}${BOLD}FATAL:${RESET} $1" >&2
+  echo
+  echo -e "  ${RED}${BOLD}━━━ ERROR ━━━${RESET}"
+  echo -e "  ${RED}${BOLD}${SYM_FAIL}${RESET} $1" >&2
+  echo
+  echo -e "  ${DIM}You can fix the issue and re-run: ./bootstrap.sh${RESET}"
+  echo -e "  ${DIM}Completed phases will be skipped.${RESET}"
+  echo
   exit 1
 }
 
@@ -91,6 +125,7 @@ ui_confirm() {
   local default="${2:-Y}"
   local answer
 
+  echo
   if [[ "$default" == "Y" ]]; then
     printf "  ${BOLD}%s [Y/n]:${RESET} " "$prompt"
   else
@@ -112,10 +147,11 @@ ui_choice() {
   local options=("$@")
   local i choice
 
+  echo
   echo -e "  ${BOLD}${prompt}${RESET}"
   echo
   for i in "${!options[@]}"; do
-    echo -e "    [$((i + 1))] ${options[$i]}"
+    echo -e "    ${CYAN}[$((i + 1))]${RESET} ${options[$i]}"
   done
   echo
   printf "  ${BOLD}Choice:${RESET} "
@@ -154,6 +190,27 @@ ui_prompt_secret() {
   echo "$answer"
 }
 
+# ── Pause and Wait ──────────────────────────────────────────────────────────
+
+ui_pause() {
+  local msg="${1:-Press Enter to continue...}"
+  echo
+  printf "  ${DIM}%s${RESET}" "$msg"
+  read -r
+}
+
+ui_wait_for_file() {
+  local file="$1"
+  local msg="$2"
+
+  echo
+  ui_warning "$msg"
+  echo -e "  ${DIM}File: $file${RESET}"
+  echo
+  echo -e "  ${BOLD}Edit the file, save it, then press Enter to continue...${RESET}"
+  read -r
+}
+
 # ── System Info ─────────────────────────────────────────────────────────────
 
 ui_system_info() {
@@ -164,47 +221,30 @@ ui_system_info() {
   memory=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
   disk=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "unknown")
 
-  echo -e "  ${DIM}Detected system:${RESET}"
+  echo -e "  ${BOLD}System Information${RESET}"
   echo
-  echo -e "    macOS        ${macos_version}"
-  echo -e "    Architecture ${arch}"
-  echo -e "    Memory       ${memory} GB"
-  echo -e "    Disk         ${disk} GB free"
+  echo -e "    ${DIM}macOS${RESET}        ${macos_version}"
+  echo -e "    ${DIM}Architecture${RESET} ${arch}"
+  echo -e "    ${DIM}Memory${RESET}       ${memory} GB"
+  echo -e "    ${DIM}Disk${RESET}         ${disk} GB free"
   echo
 }
 
-# ── Spinner ─────────────────────────────────────────────────────────────────
+# ── Dependency Check Display ───────────────────────────────────────────────
 
-SPINNER_PID=""
+ui_dependency_check() {
+  local name="$1"
+  local check_cmd="$2"
+  local version_cmd="$3"
 
-ui_spinner_start() {
-  local msg="$1"
-  local chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-  local i=0
-
-  printf "  ${CYAN}%s${RESET} " "${msg}"
-
-  (
-    while true; do
-      local char="${chars:i%${#chars}:1}"
-      printf "\r  ${CYAN}%s${RESET} %s" "$char" "$msg"
-      sleep 0.1
-      i=$(( (i + 1) % ${#chars} ))
-    done
-  ) &
-
-  SPINNER_PID=$!
-  disown "$SPINNER_PID" 2>/dev/null || true
-}
-
-ui_spinner_stop() {
-  if [[ -n "$SPINNER_PID" ]]; then
-    kill "$SPINNER_PID" 2>/dev/null || true
-    wait "$SPINNER_PID" 2>/dev/null || true
-    SPINNER_PID=""
-    printf "\r"
-    # Clear the line
-    printf '%*s\r' "$COLUMNS" ''
+  if eval "$check_cmd" >/dev/null 2>&1; then
+    local version
+    version=$(eval "$version_cmd" 2>/dev/null || echo "installed")
+    ui_success "$name $version"
+    return 0
+  else
+    ui_error "$name (not installed)"
+    return 1
   fi
 }
 

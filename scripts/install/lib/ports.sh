@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Port checking utilities for bootstrap.sh
 # Checks port availability and resolves conflicts interactively.
-# Ports are read from services/*.yaml — single source of truth.
+# Ports are read from services/*.yaml using yq — single source of truth.
 
 set -euo pipefail
 
@@ -55,7 +55,7 @@ port_find_available() {
 # ── Read Ports From Service Manifests ─────────────────────────────────────
 
 port_read_from_manifests() {
-  # Reads service:port pairs from services/*.yaml
+  # Reads service:port pairs from services/*.yaml using yq
   # Output: "service_name:host_port" per line
   local services_dir="${1:-./services}"
 
@@ -68,14 +68,10 @@ port_read_from_manifests() {
     local svc_name
     svc_name=$(basename "$manifest" .yaml)
 
-    # Extract host_port values from the ports list
-    python3 -c "
-import yaml, sys
-with open('$manifest') as f:
-    data = yaml.safe_load(f)
-for p in data.get('ports', []):
-    print(f'$svc_name:{p[\"host_port\"]}')
-" 2>/dev/null || true
+    # Extract host_port values using yq
+    yq -r '.ports[].host_port' "$manifest" 2>/dev/null | while read -r port; do
+      [[ -n "$port" ]] && echo "${svc_name}:${port}"
+    done
   done
 }
 
@@ -180,6 +176,10 @@ port_check_all() {
 
   if [[ -z "$port_entries" ]]; then
     ui_error "No service manifests found in $project_root/services"
+    echo
+    echo -e "  ${DIM}Make sure you are running this from the repository root.${RESET}"
+    echo -e "  ${DIM}The services/ directory should contain *.yaml files.${RESET}"
+    echo
     return 1
   fi
 
