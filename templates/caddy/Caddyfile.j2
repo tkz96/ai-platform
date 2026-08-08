@@ -1,10 +1,4 @@
-http://{{ platform.domain }}:8080 {
-    reverse_proxy /v1/* litellm:4000
-    reverse_proxy /langfuse/* langfuse:3000
-    reverse_proxy * litellm:4000
-}
-
-https://{{ platform.domain }}:8443 {
+:80 {
     reverse_proxy /v1/* litellm:4000
     reverse_proxy /langfuse/* langfuse:3000
     reverse_proxy * litellm:4000
