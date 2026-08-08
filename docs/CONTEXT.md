@@ -9,6 +9,7 @@ This document describes the design principles, machine roles, and operational bo
 - **Immutable**: Never modify running containers directly. Make changes in source templates and redeploy.
 - **Isolated**: Inference workloads run on dedicated hardware, separate from control plane services.
 - **Secure**: Default deny network policies. Secrets remain outside version control.
+- **One-click**: A fresh Mac can be fully provisioned with `./bootstrap.sh`.
 
 ## Machine Roles
 
@@ -34,7 +35,9 @@ Connects to LiteLLM through the OpenAI-compatible API endpoint. Hosts no infrast
 - Service manifests (`services/*.yaml`)
 - Configuration templates (`templates/*.j2`)
 - Python management tooling (`platform/`, `bootstrap.py`)
+- Shell installer (`bootstrap.sh`, `scripts/install/`)
 - Operations Makefile (`Makefile`)
+- CI pipeline (`.github/workflows/`)
 - Documentation (`docs/`)
 
 ### Excluded
@@ -43,13 +46,29 @@ Connects to LiteLLM through the OpenAI-compatible API endpoint. Hosts no infrast
 - State and backups (`state/`, `backups/`)
 - Application source code
 - Generated files (`compose.yaml`, `configs/`)
+- Secrets (`.env`, `secrets/`)
+- Install state (`.install-state`)
+
+## Installation Model
+
+The platform uses a clean two-layer boundary:
+
+| Layer | Entry Point | Responsibility |
+|---|---|---|
+| Machine preparation | `bootstrap.sh` | Install tools, init Podman, generate secrets, validate ports |
+| Platform deployment | `bootstrap.py` | Validate config, render templates, deploy containers, verify health |
+
+`bootstrap.sh` is a thin orchestrator that sources modular scripts from `scripts/install/`.
+It prepares the machine, then delegates to `bootstrap.py` for platform operations.
 
 ## Guidelines for AI Coding Agents
 
 Follow these rules when modifying this repository:
 
-1. Edit source files only (`platform.yaml`, `versions.yaml`, `services/*.yaml`, `templates/*.j2`, `platform/`).
-2. Never edit generated files (`compose.yaml`, `configs/*`).
+1. Edit source files only (`platform.yaml`, `versions.yaml`, `services/*.yaml`, `templates/*.j2`, `platform/`, `bootstrap.sh`, `scripts/install/`).
+2. Never edit generated files (`compose.yaml`, `configs/*`, `.env`, `secrets/*`, `.install-state`).
 3. Run `make lint` and `make test` before declaring completion.
 4. Keep Python code modular and typed.
-5. Use existing `make` targets instead of custom shell logic.
+5. Use existing `make` targets or `./bootstrap.sh` subcommands instead of custom shell logic.
+6. Keep `bootstrap.sh` as a thin orchestrator — put logic in `scripts/install/` modules.
+7. Never hardcode secrets or ports — use `secrets/` and `.install-state` for configuration.

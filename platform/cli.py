@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -47,6 +48,7 @@ def get_compose_cmd() -> list[str]:
 @app.command()
 def render(
     root: Path | None = typer.Option(None, "--root", "-r", help="Repository root directory"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without writing files"),
 ) -> None:
     """Validate platform configuration and render templates & compose.yaml."""
     target_root = root or ROOT_DIR
@@ -55,6 +57,10 @@ def render(
     try:
         resolved = resolve_platform(target_root)
         console.print("[bold green]✓ Configuration validated successfully.[/bold green]")
+
+        if dry_run:
+            console.print("[bold yellow]Dry run: skipping file generation.[/bold yellow]")
+            return
 
         rendered_files = render_all(target_root, resolved)
         console.print("[bold green]✓ Generated files:[/bold green]")
@@ -89,13 +95,18 @@ def install(
 @app.command()
 def status(
     root: Path | None = typer.Option(None, "--root", "-r", help="Repository root directory"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Validate configuration schema and check health status of services."""
     target_root = root or ROOT_DIR
     console.print("[bold blue]Validating configuration...[/bold blue]")
     resolved = resolve_platform(target_root)
     console.print("[bold green]✓ Configuration valid.[/bold green]")
-    verify_platform(resolved, print_table=True)
+
+    results = verify_platform(resolved, print_table=not json_output)
+
+    if json_output:
+        print(json.dumps(results, indent=2))
 
 
 @app.command()

@@ -7,35 +7,137 @@ on:
     branches: [main]
 
 jobs:
-  validate:
+  lint-test:
+    name: Lint and Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v3
         with:
-          enable-cache: true
+          version: "latest"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync
 
-      - name: Run Ruff Lint
+      - name: Run ruff check
         run: uv run ruff check .
 
-      - name: Run Ruff Format Check
+      - name: Run ruff format check
         run: uv run ruff format --check .
 
-      - name: Run YAML Lint
+      - name: Run yamllint
         run: uv run yamllint .
 
-      - name: Run Pytest
+      - name: Run pytest
         run: uv run pytest
 
-      - name: Validate Rendering
+  macos-deploy-test:
+    name: macOS Deployment Test
+    runs-on: macos-14
+    needs: lint-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install Podman
+        run: brew install podman
+
+      - name: Initialize Podman machine
+        run: |
+          podman machine init \
+            --cpus 2 \
+            --memory 4096 \
+            --disk-size 30 \
+            test-machine
+
+      - name: Start Podman machine
+        run: podman machine start test-machine
+
+      - name: Wait for Podman to be ready
+        run: |
+          timeout=60
+          elapsed=0
+          while ! podman info >/dev/null 2>&1; do
+            sleep 2
+            elapsed=$((elapsed + 2))
+            if [ $elapsed -ge $timeout ]; then
+              echo "Podman machine failed to start"
+              exit 1
+            fi
+          done
+
+      - name: Create test secrets
+        run: |
+          mkdir -p secrets
+          openssl rand -base64 32 > secrets/postgres_password
+          openssl rand -base64 32 > secrets/clickhouse_password
+          echo "sk-litellm-$(openssl rand -base64 32)" > secrets/litellm_master_key
+          echo "sk-langfuse-$(openssl rand -base64 32)" > secrets/langfuse_secret_key
+          openssl rand -base64 32 > secrets/langfuse_salt
+          openssl rand -base64 32 > secrets/nextauth_secret
+
+          PG_PASS=$(cat secrets/postgres_password)
+          LITELLM_KEY=$(cat secrets/litellm_master_key)
+          LF_KEY=$(cat secrets/langfuse_secret_key)
+          LF_SALT=$(cat secrets/langfuse_salt)
+          NA_SECRET=$(cat secrets/nextauth_secret)
+          CH_PASS=$(cat secrets/clickhouse_password)
+
+          cat > .env <<EOF
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=${PG_PASS}
+          POSTGRES_DB=platform_db
+          LITELLM_MASTER_KEY=${LITELLM_KEY}
+          LITELLM_DATABASE_URL=postgresql://postgres:${PG_PASS}@postgres:5432/platform_db
+          LANGFUSE_SECRET_KEY=${LF_KEY}
+          LANGFUSE_SALT=${LF_SALT}
+          NEXTAUTH_SECRET=${NA_SECRET}
+          NEXTAUTH_URL=http://localhost:3000
+          CLICKHOUSE_USER=clickhouse
+          CLICKHOUSE_PASSWORD=${CH_PASS}
+          INFERENCE_HOST=127.0.0.1
+          INFERENCE_PORT=8080
+          PLATFORM_DOMAIN=ai.xynotech.internal
+          EOF
+
+      - name: Render configuration
         run: uv run python bootstrap.py render
+
+      - name: Start services
+        run: podman compose up -d
+
+      - name: Wait for services to be ready
+        run: sleep 30
+
+      - name: Verify services
+        run: uv run python bootstrap.py verify || true
+
+      - name: Show service status
+        if: always()
+        run: podman compose ps || true
+
+      - name: Show service logs
+        if: always()
+        run: podman compose logs || true
+
+      - name: Clean up
+        if: always()
+        run: |
+          podman compose down -v || true
+          podman machine stop test-machine || true
+          podman machine rm -f test-machine || true

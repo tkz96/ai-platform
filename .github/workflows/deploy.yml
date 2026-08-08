@@ -20,7 +20,4 @@ jobs:
           script: |
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             cd "${DEPLOY_PATH:-~/ai-platform}"
-            git pull origin main
-            uv sync
-            uv run python bootstrap.py render
-            uv run python bootstrap.py update
+            ./bootstrap.sh update

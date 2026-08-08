@@ -10,80 +10,84 @@ It replaces manual server configuration with declarative YAML and automated rend
 
 ## Features
 
+- **One-click install**: `./bootstrap.sh` sets up everything on a fresh Mac.
 - **Configuration-driven**: YAML defines the platform. Python builds it. Jinja2 renders it.
 - **Reproducible**: Clone, install, deploy. Every run produces the same result.
-- **Single command**: `make install` deploys the full stack.
+- **Rootless**: Uses Podman with unprivileged ports (8080/8443).
 
 ## Repository Layout
 
 ```
 .
-├── platform.yaml          # Platform configuration (source)
-├── versions.yaml          # Service versions (source)
-├── services/              # Service manifests (source)
-├── templates/             # Jinja2 templates (source)
-├── platform/              # Python CLI and rendering logic
-├── tests/                 # Automated tests
-├── docs/                  # Architecture, operations, decisions
-├── configs/               # GENERATED — do not edit
-├── compose.yaml           # GENERATED — do not edit
-├── bootstrap.py           # CLI entry point
-├── Makefile               # Developer commands
-└── pyproject.toml         # Python project metadata
+├── bootstrap.sh            # Fresh-machine entry point (shell)
+├── bootstrap.py             # Platform CLI entry point (Python)
+├── platform.yaml            # Platform configuration (source)
+├── versions.yaml            # Service versions (source)
+├── services/                # Service manifests (source)
+├── templates/               # Jinja2 templates (source)
+├── platform/                # Python CLI and rendering logic
+├── scripts/install/         # Modular install phases (shell)
+├── tests/                   # Automated tests
+├── docs/                    # Architecture, operations, decisions
+├── .github/workflows/       # CI pipeline
+├── configs/                 # GENERATED — do not edit
+├── compose.yaml             # GENERATED — do not edit
+├── Makefile                 # Developer commands
+└── pyproject.toml           # Python project metadata
 ```
 
 > [!CAUTION]
 > `compose.yaml` and `configs/` are **generated files**. Never edit them directly.
 > Edit `platform.yaml`, `versions.yaml`, `services/*.yaml`, or `templates/` instead.
 
-## Requirements
-
-- Python ≥ 3.12
-- [uv](https://docs.astral.sh/uv/)
-- [Podman](https://podman.io/) with Podman Compose
-
 ## Quick Start
 
-### 1. Clone the repository
+For a full step-by-step guide, see [docs/INSTALL.md](docs/INSTALL.md).
 
 ```bash
-git clone git@github.com:<user>/ai-platform.git
+git clone git@github.com:tkz96/ai-platform.git
 cd ai-platform
+./bootstrap.sh
 ```
 
-### 2. Install Python dependencies
+The installer will:
 
-```bash
-uv sync
-```
+1. Check your Mac
+2. Install required tools (Homebrew, Python, uv, Podman)
+3. Initialize a Podman machine (4 CPUs, 8 GB RAM, 60 GB disk)
+4. Generate secrets and create `.env`
+5. Validate ports
+6. Render configuration
+7. Pull pinned container images
+8. Start services in dependency order
+9. Verify health checks
+10. Print connection information
 
-### 3. Create the environment file
+## Requirements
 
-```bash
-cp .env.example .env
-```
+- macOS 14 (Sonoma) or newer
+- Apple Silicon (M1, M2, M3, or M4)
+- 60 GB free disk space
+- 8 GB memory
 
-Edit `.env` and replace all placeholder values with real credentials.
+The installer handles all software installation automatically.
 
-### 4. Render configuration
+## Commands
 
-```bash
-make render
-```
-
-This validates `platform.yaml` and generates `compose.yaml` and `configs/`.
-
-### 5. Deploy
-
-```bash
-make install
-```
-
-### 6. Verify
-
-```bash
-make status
-```
+| Command | Action |
+|---|---|
+| `./bootstrap.sh` | Full installation on a fresh Mac |
+| `./bootstrap.sh doctor` | Check machine readiness |
+| `./bootstrap.sh start` | Start platform services |
+| `./bootstrap.sh stop` | Stop platform services |
+| `./bootstrap.sh restart` | Restart platform services |
+| `./bootstrap.sh status` | Check service health |
+| `./bootstrap.sh update` | Update platform (with review) |
+| `./bootstrap.sh verify` | Run health checks |
+| `./bootstrap.sh logs` | Tail service logs |
+| `./bootstrap.sh backup` | Backup databases and state |
+| `./bootstrap.sh restore --src <path>` | Restore from backup |
+| `./bootstrap.sh destroy` | Remove all containers, networks, and volumes |
 
 ## Daily Development
 
@@ -94,7 +98,7 @@ make status
 3. Render and validate.
 4. Commit and open a pull request.
 
-### Useful commands
+### Developer commands (Makefile)
 
 | Command | Action |
 |---|---|
@@ -129,16 +133,18 @@ make lint && make test
 - [ ] `make render` succeeds
 - [ ] No secrets in committed files
 
-## Deployment
+## CI
 
-`make install` renders configuration and starts all containers with Podman Compose.
+GitHub Actions runs on every push and pull request:
 
-For operations procedures, see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+1. **Lint and Test** (Ubuntu) — ruff, yamllint, pytest
+2. **macOS Deployment Test** — full Podman deployment with health checks
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
+| [INSTALL.md](docs/INSTALL.md) | Step-by-step installation guide |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, service topology, data flow |
 | [OPERATIONS.md](docs/OPERATIONS.md) | Deployment, backup, restore, monitoring |
 | [DECISIONS.md](docs/DECISIONS.md) | Architecture decision records |

@@ -3,9 +3,9 @@ image: docker.io/library/caddy
 version_key: caddy
 
 ports:
-  - host_port: 80
+  - host_port: 8080
     container_port: 80
-  - host_port: 443
+  - host_port: 8443
     container_port: 443
 
 volumes:
