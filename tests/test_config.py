@@ -1,5 +1,13 @@
 from pathlib import Path
-from platform.config import load_platform_config, resolve_platform
+from platform.config import (
+    InferenceConfig,
+    PlatformConfig,
+    ServiceManifest,
+    VersionsConfig,
+    load_platform_config,
+    resolve_platform,
+    validate_platform,
+)
 
 import pytest
 
@@ -49,3 +57,19 @@ services: {}
 """)
     with pytest.raises(ValueError, match="Missing service manifests"):
         resolve_platform(tmp_path)
+
+
+def test_validate_platform_pure() -> None:
+    config = PlatformConfig(
+        name="pure-platform",
+        domain="pure.internal",
+        inference=InferenceConfig(host="127.0.0.1", port=8080),
+        network="pure-net",
+        services=["svc_a"],
+    )
+    versions = VersionsConfig(platform="0.1.0", services={"v_a": "1.0.0"})
+    manifests = {"svc_a": ServiceManifest(name="svc_a", image="img_a", version_key="v_a")}
+
+    resolved = validate_platform(config, versions, manifests)
+    assert resolved.config.name == "pure-platform"
+    assert resolved.dependency_order == ["svc_a"]

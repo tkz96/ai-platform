@@ -28,9 +28,15 @@ machine_memory=$(state_get_podman_machine "memory_mb" "8192")
 machine_disk=$(state_get_podman_machine "disk_gb" "60")
 
 # Initialize Podman machine
-podman_machine_init "$machine_name" "$machine_cpus" "$machine_memory" "$machine_disk"
+# If the machine already exists (e.g. from a previous failed run), skip init
+# and proceed directly to start — idempotent by design.
+if podman_machine_exists "$machine_name"; then
+  ui_success "Podman machine '$machine_name' already exists — skipping init"
+else
+  podman_machine_init "$machine_name" "$machine_cpus" "$machine_memory" "$machine_disk"
+fi
 
-# Start Podman machine
+# Start Podman machine (start is also idempotent via podman_machine_start)
 podman_machine_start "$machine_name"
 
 # Verify Podman is functional

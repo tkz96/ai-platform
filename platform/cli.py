@@ -1,10 +1,10 @@
 import json
-import subprocess
 import sys
 from pathlib import Path
 from platform.config import resolve_platform
 from platform.renderer import render_all
-from platform.verify import verify_platform
+from platform.runner import ComposeRunner
+from platform.verify import format_health_table, verify_platform
 
 import typer
 from rich.console import Console
@@ -17,32 +17,6 @@ app = typer.Typer(
 console = Console()
 
 ROOT_DIR = Path(__file__).parent.parent
-
-
-def get_compose_cmd() -> list[str]:
-    """Detect whether podman-compose, podman compose, or docker compose is available."""
-    try:
-        res = subprocess.run(["podman", "compose", "version"], capture_output=True)
-        if res.returncode == 0:
-            return ["podman", "compose"]
-    except FileNotFoundError:
-        pass
-
-    try:
-        res = subprocess.run(["podman-compose", "version"], capture_output=True)
-        if res.returncode == 0:
-            return ["podman-compose"]
-    except FileNotFoundError:
-        pass
-
-    try:
-        res = subprocess.run(["docker", "compose", "version"], capture_output=True)
-        if res.returncode == 0:
-            return ["docker", "compose"]
-    except FileNotFoundError:
-        pass
-
-    return ["podman", "compose"]
 
 
 @app.command()
@@ -80,14 +54,12 @@ def install(
     target_root = root or ROOT_DIR
     render(root=target_root)
 
-    compose_cmd = get_compose_cmd()
-    cmd = compose_cmd + ["up", "-d"]
-    cmd_str = " ".join(cmd)
-    console.print(f"[bold blue]Starting platform services with command: {cmd_str}...[/bold blue]")
+    runner = ComposeRunner()
+    console.print("[bold blue]Starting platform services...[/bold blue]")
     try:
-        subprocess.run(cmd, cwd=target_root, check=True)
+        runner.up(target_root)
         console.print("[bold green]✓ Platform services deployed successfully.[/bold green]")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         console.print(f"[bold red]Deployment failed:[/bold red] {e}")
         sys.exit(1)
 
@@ -99,14 +71,19 @@ def status(
 ) -> None:
     """Validate configuration schema and check health status of services."""
     target_root = root or ROOT_DIR
-    console.print("[bold blue]Validating configuration...[/bold blue]")
+    if not json_output:
+        console.print("[bold blue]Validating configuration...[/bold blue]")
     resolved = resolve_platform(target_root)
-    console.print("[bold green]✓ Configuration valid.[/bold green]")
+    if not json_output:
+        console.print("[bold green]✓ Configuration valid.[/bold green]")
 
-    results = verify_platform(resolved, print_table=not json_output)
+    results = verify_platform(resolved)
 
     if json_output:
         print(json.dumps(results, indent=2))
+    else:
+        table = format_health_table(results)
+        console.print(table)
 
 
 @app.command()
@@ -125,15 +102,12 @@ def update(
     target_root = root or ROOT_DIR
     render(root=target_root)
 
-    compose_cmd = get_compose_cmd()
-    pull_cmd = compose_cmd + ["pull"]
-    up_cmd = compose_cmd + ["up", "-d"]
-
+    runner = ComposeRunner()
     console.print("[bold blue]Pulling container images...[/bold blue]")
-    subprocess.run(pull_cmd, cwd=target_root, check=True)
+    runner.pull(target_root)
 
     console.print("[bold blue]Redeploying services...[/bold blue]")
-    subprocess.run(up_cmd, cwd=target_root, check=True)
+    runner.up(target_root)
     console.print("[bold green]✓ Update complete.[/bold green]")
 
 
@@ -163,12 +137,11 @@ def backup(
             tar.add(configs_dir, arcname="configs")
 
     # Attempt PostgreSQL database dump if container is running
-    compose_cmd = get_compose_cmd()
+    runner = ComposeRunner()
     try:
         dump_path = target_dest / f"postgres_{timestamp}.sql"
-        cmd = compose_cmd + ["exec", "-T", "postgres", "pg_dumpall", "-U", "postgres"]
         with open(dump_path, "w") as f:
-            subprocess.run(cmd, cwd=ROOT_DIR, stdout=f, stderr=subprocess.DEVNULL, check=True)
+            runner.exec(ROOT_DIR, "postgres", ["pg_dumpall", "-U", "postgres"], stdout=f)
         console.print(f"[bold green]✓ Database dump saved to {dump_path}[/bold green]")
     except Exception:
         console.print(
@@ -196,12 +169,11 @@ def restore(
             tar.extractall(path=ROOT_DIR)
         console.print("[bold green]✓ Configuration archives restored successfully.[/bold green]")
     elif src.is_dir():
+        runner = ComposeRunner()
         for item in src.glob("*"):
             if item.name.endswith(".sql"):
-                compose_cmd = get_compose_cmd()
-                cmd = compose_cmd + ["exec", "-T", "postgres", "psql", "-U", "postgres"]
                 with open(item) as f:
-                    subprocess.run(cmd, cwd=ROOT_DIR, stdin=f, check=True)
+                    runner.exec(ROOT_DIR, "postgres", ["psql", "-U", "postgres"], stdin=f)
                 console.print(f"[bold green]✓ Restored SQL dump {item.name}[/bold green]")
     else:
         console.print(f"[bold red]Unsupported backup source format: {src}[/bold red]")
@@ -216,14 +188,13 @@ def destroy(
 ) -> None:
     """Stop and remove all containers, networks, and volumes."""
     target_root = root or ROOT_DIR
-    compose_cmd = get_compose_cmd()
-    cmd = compose_cmd + ["down", "-v"]
+    runner = ComposeRunner()
 
     console.print("[bold red]Destroying platform services and volumes...[/bold red]")
     try:
-        subprocess.run(cmd, cwd=target_root, check=True)
+        runner.down(target_root, volumes=True)
         console.print("[bold green]✓ Platform destroyed successfully.[/bold green]")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         console.print(f"[bold red]Destroy failed:[/bold red] {e}")
         sys.exit(1)
 

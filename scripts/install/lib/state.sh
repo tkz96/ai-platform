@@ -35,53 +35,54 @@ EOF
   fi
 }
 
+# ── Internal Primitives ─────────────────────────────────────────────────────
+
+_state_get() {
+  local jq_expr="$1"
+  local default="$2"
+  if [[ ! -f "$STATE_FILE" ]]; then
+    echo "$default"
+    return
+  fi
+  local res
+  res=$(jq -r "$jq_expr // empty" "$STATE_FILE" 2>/dev/null)
+  if [[ -z "$res" || "$res" == "null" ]]; then
+    echo "$default"
+  else
+    echo "$res"
+  fi
+}
+
+_state_set() {
+  local jq_expr="$1"
+  state_init
+  local tmp
+  tmp=$(mktemp)
+  if jq "$jq_expr" "$STATE_FILE" > "$tmp"; then
+    mv "$tmp" "$STATE_FILE"
+  else
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
 # ── State Queries ───────────────────────────────────────────────────────────
 
 state_phase_status() {
   local phase="$1"
-  if [[ ! -f "$STATE_FILE" ]]; then
-    echo "not_started"
-    return
-  fi
-  local status
-  status=$(python3 -c "
-import json, sys
-with open('$STATE_FILE') as f:
-    data = json.load(f)
-phase = data.get('phases', {}).get('$phase', {})
-print(phase.get('status', 'not_started'))
-" 2>/dev/null || echo "not_started")
-  echo "$status"
+  _state_get ".phases[\"$phase\"].status" "not_started"
 }
 
 state_get_port() {
   local service="$1"
   local default="$2"
-  if [[ ! -f "$STATE_FILE" ]]; then
-    echo "$default"
-    return
-  fi
-  python3 -c "
-import json
-with open('$STATE_FILE') as f:
-    data = json.load(f)
-print(data.get('ports', {}).get('$service', $default))
-" 2>/dev/null || echo "$default"
+  _state_get ".ports[\"$service\"]" "$default"
 }
 
 state_get_podman_machine() {
   local key="$1"
   local default="$2"
-  if [[ ! -f "$STATE_FILE" ]]; then
-    echo "$default"
-    return
-  fi
-  python3 -c "
-import json
-with open('$STATE_FILE') as f:
-    data = json.load(f)
-print(data.get('podman_machine', {}).get('$key', '$default'))
-" 2>/dev/null || echo "$default"
+  _state_get ".podman_machine[\"$key\"]" "$default"
 }
 
 # ── State Updates ───────────────────────────────────────────────────────────
@@ -94,22 +95,12 @@ state_set_phase() {
 
   state_init
 
-  python3 -c "
-import json
-with open('$STATE_FILE') as f:
-    data = json.load(f)
-if 'phases' not in data:
-    data['phases'] = {}
-data['phases']['$phase'] = {
-    'status': '$status',
-    'timestamp': '$timestamp'
-}
-if '$status' == 'completed' and data.get('installed_at') is None:
-    data['installed_at'] = '$timestamp'
-with open('$STATE_FILE', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-"
+  local installed_clause=""
+  if [[ "$status" == "completed" ]]; then
+    installed_clause=' | if .installed_at == null then .installed_at = "'"$timestamp"'" else . end'
+  fi
+
+  _state_set '.phases["'"$phase"'"] = {"status": "'"$status"'", "timestamp": "'"$timestamp"'"}'"$installed_clause"
 }
 
 state_set_port() {
@@ -117,18 +108,7 @@ state_set_port() {
   local port="$2"
 
   state_init
-
-  python3 -c "
-import json
-with open('$STATE_FILE') as f:
-    data = json.load(f)
-if 'ports' not in data:
-    data['ports'] = {}
-data['ports']['$service'] = $port
-with open('$STATE_FILE', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-"
+  _state_set '.ports["'"$service"'"] = ('"$port"' | tonumber)'
 }
 
 # ── Phase Runner ────────────────────────────────────────────────────────────
@@ -211,22 +191,12 @@ state_show() {
   fi
 
   ui_section "Install State"
-  python3 -c "
-import json
-with open('$STATE_FILE') as f:
-    data = json.load(f)
-
-print(f\"  Version:      {data.get('version', 'unknown')}\")
-print(f\"  Installed at: {data.get('installed_at', 'never')}\")
-print()
-print('  Phases:')
-for phase, info in data.get('phases', {}).items():
-    status = info.get('status', 'unknown')
-    symbol = '✓' if status == 'completed' else '✗' if status == 'failed' else '→'
-    print(f'    {symbol} {phase}: {status}')
-print()
-print('  Ports:')
-for service, port in data.get('ports', {}).items():
-    print(f'    {service}: {port}')
-"
+  jq -r '
+    "  Version:      \(.version // "unknown")",
+    "  Installed at: \(.installed_at // "never")\n",
+    "  Phases:",
+    (.phases // {} | to_entries[] | "    \(if .value.status == "completed" then "✓" elif .value.status == "failed" then "✗" else "→" end) \(.key): \(.value.status)"),
+    "\n  Ports:",
+    (.ports // {} | to_entries[] | "    \(.key): \(.value)")
+  ' "$STATE_FILE"
 }

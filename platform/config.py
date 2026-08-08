@@ -122,12 +122,13 @@ def resolve_dependency_order(
     return order
 
 
-def resolve_platform(root_dir: Path, env_vars: dict[str, str] | None = None) -> ResolvedPlatform:
-    config = load_platform_config(root_dir)
-    versions = load_versions(root_dir)
-    services_dir = root_dir / "services"
-    all_manifests = load_all_service_manifests(services_dir)
-
+def validate_platform(
+    config: PlatformConfig,
+    versions: VersionsConfig,
+    all_manifests: dict[str, ServiceManifest],
+    env_vars: dict[str, str] | None = None,
+) -> ResolvedPlatform:
+    """Pure validation and resolution logic without filesystem I/O."""
     # 1. Validate enabled services have manifests
     missing_manifests = [s for s in config.services if s not in all_manifests]
     if missing_manifests:
@@ -173,3 +174,11 @@ def resolve_platform(root_dir: Path, env_vars: dict[str, str] | None = None) -> 
         services=enabled_manifests,
         dependency_order=dependency_order,
     )
+
+
+def resolve_platform(root_dir: Path, env_vars: dict[str, str] | None = None) -> ResolvedPlatform:
+    config = load_platform_config(root_dir)
+    versions = load_versions(root_dir)
+    services_dir = root_dir / "services"
+    all_manifests = load_all_service_manifests(services_dir)
+    return validate_platform(config, versions, all_manifests, env_vars=env_vars)

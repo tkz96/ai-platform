@@ -20,7 +20,9 @@ podman_version() {
 
 podman_machine_exists() {
   local machine_name="$1"
-  podman machine list --format '{{.Name}}' 2>/dev/null | grep -q "^${machine_name}$"
+  # podman machine inspect exits 0 if the machine exists, non-zero otherwise.
+  # More reliable than grepping `podman machine list` in Podman 6.x.
+  podman machine inspect "$machine_name" > /dev/null 2>&1
 }
 
 podman_machine_running() {
@@ -62,15 +64,20 @@ podman_machine_init() {
   fi
 
   ui_step "Initializing Podman machine '$machine_name' (CPUs: $cpus, Memory: ${memory_mb}MB, Disk: ${disk_gb}GB)..."
-  podman machine init \
+
+  local init_output
+  if ! init_output=$(podman machine init \
     --cpus "$cpus" \
     --memory "$memory_mb" \
     --disk-size "$disk_gb" \
     --volume "$HOME:$HOME" \
-    "$machine_name"
-
-  if ! podman_machine_exists "$machine_name"; then
-    ui_error "Podman machine initialization failed"
+    "$machine_name" 2>&1); then
+    # Treat "already exists" as success — idempotent
+    if echo "$init_output" | grep -q 'already exists'; then
+      ui_success "Podman machine '$machine_name' already exists (detected via init)"
+      return 0
+    fi
+    ui_error "Podman machine initialization failed: $init_output"
     return 1
   fi
 
