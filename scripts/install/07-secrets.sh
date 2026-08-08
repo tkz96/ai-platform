@@ -30,6 +30,11 @@ generate_key() {
   echo "${prefix}$(generate_secret "$length")"
 }
 
+generate_hex_secret() {
+  local length="${1:-64}"
+  openssl rand -hex $((length / 2)) 2>/dev/null | tr -d '\n'
+}
+
 secret_exists() {
   local file="$1"
   [[ -f "$file" ]] && [[ -s "$file" ]]
@@ -43,17 +48,21 @@ get_or_generate() {
   local prefix="${4:-}"
 
   if secret_exists "$file"; then
-    ui_success "$name: already configured"
+    ui_success "$name: already configured" >&2
     cat "$file"
     return 0
   fi
 
   if ui_confirm "Generate $prompt automatically?"; then
     local value
-    value=$(generate_key "$prefix" 32)
+    if [[ "$name" == *"encryption key"* ]]; then
+      value=$(generate_hex_secret 64)
+    else
+      value=$(generate_key "$prefix" 32)
+    fi
     echo "$value" > "$file"
     chmod 600 "$file"
-    ui_success "$name: generated"
+    ui_success "$name: generated" >&2
     echo "$value"
     return 0
   fi
@@ -61,12 +70,12 @@ get_or_generate() {
   local manual
   manual=$(ui_prompt_secret "Enter $prompt")
   if [[ -z "$manual" ]]; then
-    ui_error "$name: value cannot be empty"
+    ui_error "$name: value cannot be empty" >&2
     return 1
   fi
   echo "$manual" > "$file"
   chmod 600 "$file"
-  ui_success "$name: saved"
+  ui_success "$name: saved" >&2
   echo "$manual"
   return 0
 }
@@ -114,6 +123,11 @@ langfuse_salt=$(get_or_generate \
   "$SECRETS_DIR/langfuse_salt" \
   "a Langfuse salt")
 
+langfuse_encryption_key=$(get_or_generate \
+  "Langfuse encryption key" \
+  "$SECRETS_DIR/langfuse_encryption_key" \
+  "a 64-character Langfuse encryption key")
+
 nextauth_secret=$(get_or_generate \
   "NextAuth secret" \
   "$SECRETS_DIR/nextauth_secret" \
@@ -137,10 +151,19 @@ LITELLM_MASTER_KEY=${litellm_master_key}
 LITELLM_DATABASE_URL=postgresql://postgres:${postgres_password}@postgres:5432/platform_db
 
 # Langfuse
+DATABASE_URL=postgresql://postgres:${postgres_password}@postgres:5432/platform_db
 LANGFUSE_SECRET_KEY=${langfuse_secret_key}
 LANGFUSE_SALT=${langfuse_salt}
+SALT=${langfuse_salt}
+ENCRYPTION_KEY=${langfuse_encryption_key}
 NEXTAUTH_SECRET=${nextauth_secret}
 NEXTAUTH_URL=http://localhost:3000
+LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse
+CLICKHOUSE_URL=http://clickhouse:8123
+CLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000
+CLICKHOUSE_CLUSTER_ENABLED=false
+REDIS_HOST=redis
+REDIS_PORT=6379
 
 # ClickHouse
 CLICKHOUSE_USER=clickhouse

@@ -22,10 +22,16 @@ fi
 
 port_available() {
   local port="$1"
-  if lsof -i ":$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    return 1
+  local info
+  info=$(lsof -i ":$port" -sTCP:LISTEN -P -n 2>/dev/null | tail -1)
+  if [[ -z "$info" ]]; then
+    return 0
   fi
-  return 0
+  # Ignore Podman's gvproxy/rootlessport network helper
+  if echo "$info" | grep -qE "gvproxy|podman|rootlessport"; then
+    return 0
+  fi
+  return 1
 }
 
 port_process_info() {
@@ -87,7 +93,7 @@ port_read_from_manifests() {
     svc_name=$(basename "$manifest" .yaml)
 
     # Extract host_port values using yq
-    yq -r '.ports[].host_port // empty' "$manifest" 2>/dev/null | while read -r port; do
+    yq '.ports[].host_port // ""' "$manifest" 2>/dev/null | while read -r port; do
       [[ -n "$port" ]] && echo "${svc_name}:${port}"
     done
   done

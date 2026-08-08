@@ -1,3 +1,4 @@
+import socket
 import urllib.error
 import urllib.request
 from platform.config import ResolvedPlatform, ServiceManifest
@@ -19,22 +20,38 @@ def check_endpoint(url: str, timeout: int = 5) -> tuple[bool, str]:
         return False, str(e)
 
 
+def check_tcp_port(host: str, port: int, timeout: int = 5) -> tuple[bool, str]:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True, "TCP Connection OK"
+    except Exception as e:
+        return False, str(e)
+
+
 def verify_service(service_name: str, manifest: ServiceManifest) -> dict[str, Any]:
-    if not manifest.health or not manifest.ports:
+    if not manifest.ports:
         return {
             "name": service_name,
-            "status": "HEALTHY (No HTTP check configured)",
+            "status": "HEALTHY (No ports exposed)",
             "passed": True,
         }
 
     host_port = manifest.ports[0].host_port
-    endpoint = manifest.health.endpoint or "/"
-    target_url = f"http://localhost:{host_port}{endpoint}"
 
-    passed, message = check_endpoint(target_url)
+    if manifest.health and manifest.health.endpoint:
+        target_url = f"http://localhost:{host_port}{manifest.health.endpoint}"
+        passed, message = check_endpoint(target_url)
+        return {
+            "name": service_name,
+            "endpoint": target_url,
+            "status": "HEALTHY" if passed else f"UNHEALTHY ({message})",
+            "passed": passed,
+        }
+
+    passed, message = check_tcp_port("localhost", host_port)
     return {
         "name": service_name,
-        "endpoint": target_url,
+        "endpoint": f"tcp://localhost:{host_port}",
         "status": "HEALTHY" if passed else f"UNHEALTHY ({message})",
         "passed": passed,
     }

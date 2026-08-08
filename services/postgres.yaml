@@ -16,4 +16,4 @@ environment:
   - POSTGRES_DB
 
 health:
-  command: ["pg_isready", "-U", "postgres"]
+  command: ["CMD", "pg_isready", "-U", "postgres"]

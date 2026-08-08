@@ -17,4 +17,4 @@ depends_on:
   - langfuse
 
 health:
-  endpoint: /
+  command: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]

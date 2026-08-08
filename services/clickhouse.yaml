@@ -17,4 +17,4 @@ environment:
   - CLICKHOUSE_PASSWORD
 
 health:
-  endpoint: /ping
+  command: ["CMD", "wget", "-q", "--spider", "http://localhost:8123/ping"]

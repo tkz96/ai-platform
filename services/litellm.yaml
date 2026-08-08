@@ -18,6 +18,9 @@ depends_on:
   - postgres
 
 health:
-  endpoint: /health/liveliness
+  command:
+    - CMD-SHELL
+    - >-
+      python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
 
 documentation: https://docs.litellm.ai/

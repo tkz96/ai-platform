@@ -2,7 +2,7 @@ platform: "0.1.0"
 
 services:
   litellm: "1.95.0"
-  langfuse: "3.6.2"
+  langfuse: "3.50.0"
   postgres: "17"
   clickhouse: "25.7"
   redis: "8.2"

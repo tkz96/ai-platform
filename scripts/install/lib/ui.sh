@@ -125,11 +125,11 @@ ui_confirm() {
   local default="${2:-Y}"
   local answer
 
-  echo
+  echo >&2
   if [[ "$default" == "Y" ]]; then
-    printf "  ${BOLD}%s [Y/n]:${RESET} " "$prompt"
+    printf "  ${BOLD}%s [Y/n]:${RESET} " "$prompt" >&2
   else
-    printf "  ${BOLD}%s [y/N]:${RESET} " "$prompt"
+    printf "  ${BOLD}%s [y/N]:${RESET} " "$prompt" >&2
   fi
 
   read -r answer
@@ -147,14 +147,14 @@ ui_choice() {
   local options=("$@")
   local i choice
 
-  echo
-  echo -e "  ${BOLD}${prompt}${RESET}"
-  echo
+  echo >&2
+  echo -e "  ${BOLD}${prompt}${RESET}" >&2
+  echo >&2
   for i in "${!options[@]}"; do
-    echo -e "    ${CYAN}[$((i + 1))]${RESET} ${options[$i]}"
+    echo -e "    ${CYAN}[$((i + 1))]${RESET} ${options[$i]}" >&2
   done
-  echo
-  printf "  ${BOLD}Choice:${RESET} "
+  echo >&2
+  printf "  ${BOLD}Choice:${RESET} " >&2
   read -r choice
 
   if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
@@ -171,9 +171,9 @@ ui_prompt_text() {
   local answer
 
   if [[ -n "$default" ]]; then
-    printf "  ${BOLD}%s [%s]:${RESET} " "$prompt" "$default"
+    printf "  ${BOLD}%s [%s]:${RESET} " "$prompt" "$default" >&2
   else
-    printf "  ${BOLD}%s:${RESET} " "$prompt"
+    printf "  ${BOLD}%s:${RESET} " "$prompt" >&2
   fi
 
   read -r answer
@@ -184,9 +184,9 @@ ui_prompt_secret() {
   local prompt="$1"
   local answer
 
-  printf "  ${BOLD}%s:${RESET} " "$prompt"
+  printf "  ${BOLD}%s:${RESET} " "$prompt" >&2
   read -rs answer
-  echo
+  echo >&2
   echo "$answer"
 }
 

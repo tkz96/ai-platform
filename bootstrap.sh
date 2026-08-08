@@ -51,7 +51,7 @@ BOOTSTRAP_VERSION="0.1.0"
 
 get_platform_domain() {
   # Read domain from platform.yaml using yq — single source of truth
-  yq -r '.domain // "localhost"' "$PROJECT_ROOT/platform.yaml" 2>/dev/null || echo "localhost"
+  yq '.domain // "localhost"' "$PROJECT_ROOT/platform.yaml" 2>/dev/null || echo "localhost"
 }
 
 # ── Dependency Check ───────────────────────────────────────────────────────

@@ -147,14 +147,12 @@ podman_wait_service_healthy() {
   local service="$1"
   local timeout="${2:-90}"
   local elapsed=0
-  local compose_cmd
-  compose_cmd=$(podman_compose_cmd)
 
   ui_step "Waiting for $service to become healthy..."
 
   while (( elapsed < timeout )); do
     local status
-    status=$($compose_cmd ps "$service" 2>/dev/null | tail -1 | awk '{print $NF}')
+    status=$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$service" 2>/dev/null || echo "")
 
     if [[ "$status" == "healthy" || "$status" == "running" ]]; then
       ui_success "$service is healthy"

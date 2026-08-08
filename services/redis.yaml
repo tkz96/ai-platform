@@ -11,4 +11,4 @@ volumes:
     target: /data
 
 health:
-  command: ["redis-cli", "ping"]
+  command: ["CMD", "redis-cli", "ping"]

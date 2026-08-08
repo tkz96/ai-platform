@@ -106,7 +106,10 @@ def generate_compose_dict(resolved: ResolvedPlatform) -> dict[str, Any]:
                 "retries": manifest.health.retries,
             }
             if manifest.health.command:
-                hc["test"] = manifest.health.command
+                cmd = list(manifest.health.command)
+                if cmd and cmd[0] not in ("CMD", "CMD-SHELL", "NONE"):
+                    cmd.insert(0, "CMD")
+                hc["test"] = cmd
             elif manifest.health.endpoint:
                 c_port = manifest.ports[0].container_port
                 test_cmd = f"curl -f http://localhost:{c_port}{manifest.health.endpoint} || exit 1"
