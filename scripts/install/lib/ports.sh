@@ -5,6 +5,19 @@
 
 set -euo pipefail
 
+# Ensure Homebrew & local binaries are in PATH
+if [[ -f /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [[ -f /usr/local/bin/brew ]]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+fi
+
+# Ensure UI library is sourced
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! command -v ui_error >/dev/null 2>&1; then
+  [[ -f "$LIB_DIR/ui.sh" ]] && source "$LIB_DIR/ui.sh"
+fi
+
 # ── Port Availability ───────────────────────────────────────────────────────
 
 port_available() {
@@ -63,13 +76,18 @@ port_read_from_manifests() {
     return 1
   fi
 
+  if ! command -v yq >/dev/null 2>&1; then
+    ui_error "yq is required to read service manifests but was not found in PATH"
+    return 1
+  fi
+
   for manifest in "$services_dir"/*.yaml; do
     [[ -f "$manifest" ]] || continue
     local svc_name
     svc_name=$(basename "$manifest" .yaml)
 
     # Extract host_port values using yq
-    yq -r '.ports[].host_port' "$manifest" 2>/dev/null | while read -r port; do
+    yq -r '.ports[].host_port // empty' "$manifest" 2>/dev/null | while read -r port; do
       [[ -n "$port" ]] && echo "${svc_name}:${port}"
     done
   done

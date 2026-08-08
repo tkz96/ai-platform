@@ -25,6 +25,17 @@ export PROJECT_ROOT="$SCRIPT_DIR"
 INSTALL_DIR="$SCRIPT_DIR/scripts/install"
 LIB_DIR="$INSTALL_DIR/lib"
 
+# ── Environment Setup ───────────────────────────────────────────────────────
+
+if [[ -f /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [[ -f /usr/local/bin/brew ]]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+fi
+if [[ -d "$HOME/.local/bin" ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
 # ── Source Libraries ────────────────────────────────────────────────────────
 
 source "$LIB_DIR/ui.sh"
