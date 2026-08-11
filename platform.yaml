@@ -3,8 +3,16 @@ domain: ai.xynotech.internal
 default_model: qwen2.5-coder
 
 inference:
-  host: 127.0.0.1
-  port: 8080
+  # Mac Mini side — static IP assigned to the direct Ethernet link
+  mac_ip: 10.42.0.1
+  # Inference PC side — static IP assigned by bootstrap from Mac Mini via SSH
+  node_ip: 10.42.0.2
+  node_port: 8080
+  # SSH credentials for the inference PC (key-based auth recommended)
+  # node_user is read from .install-state (prompted on first run)
+  # Paths are stored in .install-state after first prompting
+  #   inference_llama_binary: /usr/local/bin/llama-server
+  #   inference_model_path:   /models/qwen2.5-coder-35b-a3b.gguf
 
 network: ai-platform
 

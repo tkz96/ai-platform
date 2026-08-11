@@ -13,8 +13,9 @@
 #   ./bootstrap.sh verify       # Run health checks
 #   ./bootstrap.sh logs         # Tail service logs
 #   ./bootstrap.sh backup       # Create backup
-#   ./bootstrap.sh restore      # Restore from backup
-#   ./bootstrap.sh destroy      # Remove all containers and volumes
+#   ./bootstrap.sh restore           # Restore from backup
+#   ./bootstrap.sh destroy           # Remove all containers and volumes
+#   ./bootstrap.sh connect-inference # Configure & verify inference PC connection
 
 set -euo pipefail
 
@@ -107,15 +108,17 @@ Commands:
   update      Update platform (with review)
   verify      Run health checks
   logs        Tail service logs
-  backup      Create backup
-  restore     Restore from backup
-  destroy     Remove all containers and volumes
-  help        Show this help
+  backup              Create backup
+  restore             Restore from backup
+  destroy             Remove all containers and volumes
+  connect-inference   Configure, connect & verify the inference PC
+  help                Show this help
 
 Examples:
-  ./bootstrap.sh          # Install on a fresh Mac
-  ./bootstrap.sh doctor   # Check if machine is ready
-  ./bootstrap.sh status   # Check service health
+  ./bootstrap.sh                    # Install on a fresh Mac
+  ./bootstrap.sh doctor             # Check if machine is ready
+  ./bootstrap.sh status             # Check service health
+  ./bootstrap.sh connect-inference  # Hook up the inference PC
 EOF
 }
 
@@ -480,6 +483,12 @@ run_restore() {
   (cd "$PROJECT_ROOT" && uv run python bootstrap.py restore --src "$src")
 }
 
+# ── Connect Inference ─────────────────────────────────────────────────────
+
+run_connect_inference() {
+  bash "$INSTALL_DIR/06a-networking.sh"
+}
+
 # ── Destroy ────────────────────────────────────────────────────────────────
 
 run_destroy() {
@@ -530,9 +539,10 @@ main() {
     verify)    run_verify ;;
     logs)      run_logs "$@" ;;
     backup)    run_backup ;;
-    restore)   run_restore "$@" ;;
-    destroy)   run_destroy ;;
-    help|-h|--help) show_help ;;
+    restore)            run_restore "$@" ;;
+    destroy)            run_destroy ;;
+    connect-inference)  run_connect_inference ;;
+    help|-h|--help)     show_help ;;
     *)
       ui_error "Unknown command: $command"
       echo
