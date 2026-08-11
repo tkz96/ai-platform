@@ -145,11 +145,13 @@ run_install() {
     "uv:04-uv.sh"
     "podman:05-podman.sh"
     "ports:06-ports.sh"
+    "networking:06a-networking.sh"
     "secrets:07-secrets.sh"
     "render:08-render.sh"
     "deploy:09-deploy.sh"
     "verify:10-verify.sh"
   )
+
 
   for entry in "${phases[@]}"; do
     local phase_name="${entry%%:*}"

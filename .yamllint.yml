@@ -2,10 +2,12 @@ extends: default
 
 ignore: |
   .venv/
+  node_modules/
   data/
   backups/
   state/
   .git/
+
 
 rules:
   document-start: disable

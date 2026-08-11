@@ -141,6 +141,26 @@ def _render_compose_yaml(root_dir: Path, resolved: ResolvedPlatform) -> Path:
 
 def render_all(root_dir: Path, resolved: ResolvedPlatform) -> list[Path]:
     """Render all config templates and compose.yaml."""
+    templates_dir = root_dir / "templates"
+    for service_name in resolved.config.services:
+        manifest = resolved.services.get(service_name)
+        if manifest and manifest.volumes:
+            for v in manifest.volumes:
+                source_path = (
+                    root_dir / v.source if not Path(v.source).is_absolute() else Path(v.source)
+                )
+                if source_path.exists():
+                    if source_path.is_file():
+                        source_path.parent.mkdir(parents=True, exist_ok=True)
+                    else:
+                        source_path.mkdir(parents=True, exist_ok=True)
+                else:
+                    template_file = templates_dir / service_name / f"{source_path.name}.j2"
+                    if template_file.exists():
+                        source_path.parent.mkdir(parents=True, exist_ok=True)
+                    else:
+                        source_path.mkdir(parents=True, exist_ok=True)
+
     rendered = _render_service_templates(root_dir, resolved)
     compose_path = _render_compose_yaml(root_dir, resolved)
     rendered.append(compose_path)
