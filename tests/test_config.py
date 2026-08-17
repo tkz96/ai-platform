@@ -84,10 +84,20 @@ def test_inference_config_validation() -> None:
         port=8080,
         health_endpoint="/health",
         protocol="http",
+        service_user="ubuntu",
+        working_directory="/home/ubuntu",
+        binary_path="/usr/local/bin/llama-server",
+        model_path="/home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf",
+        extra_args=["--fit", "on"],
     )
     assert inf.host == "10.42.0.2"
     assert inf.bind_host == "10.42.0.2"
     assert inf.port == 8080
+    assert inf.service_user == "ubuntu"
+    assert inf.working_directory == "/home/ubuntu"
+    assert inf.binary_path == "/usr/local/bin/llama-server"
+    assert inf.model_path == "/home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf"
+    assert inf.extra_args == ["--fit", "on"]
 
     # Invalid port
     with pytest.raises(ValidationError):
@@ -114,6 +124,10 @@ inference:
   port: 8080
   health_endpoint: /health
   protocol: http
+  service_user: ubuntu
+  working_directory: /home/ubuntu
+  binary_path: /usr/local/bin/llama-server
+  model_path: /models/qwen.gguf
 services: []
 """)
 
@@ -121,24 +135,39 @@ services: []
     cfg1 = load_platform_config(tmp_path)
     assert cfg1.inference.host == "10.42.0.2"
     assert cfg1.inference.port == 8080
+    assert cfg1.inference.service_user == "ubuntu"
+    assert cfg1.inference.model_path == "/models/qwen.gguf"
 
     # 2. .env file override
     (tmp_path / ".env").write_text("""
 INFERENCE_HOST=10.42.0.10
 INFERENCE_PORT=8090
+INFERENCE_MODEL_PATH=/env/models/qwen.gguf
+INFERENCE_SERVICE_USER=ai-runner
 """)
     cfg2 = load_platform_config(tmp_path)
     assert cfg2.inference.host == "10.42.0.10"
     assert cfg2.inference.port == 8090
+    assert cfg2.inference.model_path == "/env/models/qwen.gguf"
+    assert cfg2.inference.service_user == "ai-runner"
 
     # 3. os.environ overrides .env
     monkeypatch.setenv("INFERENCE_HOST", "10.42.0.20")
     monkeypatch.setenv("INFERENCE_PORT", "9000")
+    monkeypatch.setenv("INFERENCE_MODEL_PATH", "/os/models/qwen.gguf")
     cfg3 = load_platform_config(tmp_path)
     assert cfg3.inference.host == "10.42.0.20"
     assert cfg3.inference.port == 9000
+    assert cfg3.inference.model_path == "/os/models/qwen.gguf"
 
     # 4. Explicit env_vars dict overrides os.environ
-    cfg4 = load_platform_config(tmp_path, env_vars={"INFERENCE_HOST": "10.42.0.30"})
+    cfg4 = load_platform_config(
+        tmp_path,
+        env_vars={
+            "INFERENCE_HOST": "10.42.0.30",
+            "INFERENCE_MODEL_PATH": "/runtime/models/qwen.gguf",
+        },
+    )
     assert cfg4.inference.host == "10.42.0.30"
     assert cfg4.inference.port == 9000
+    assert cfg4.inference.model_path == "/runtime/models/qwen.gguf"

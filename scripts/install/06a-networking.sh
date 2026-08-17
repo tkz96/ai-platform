@@ -177,10 +177,13 @@ while ! ping -c 1 -W 2 "$INFERENCE_HOST" >/dev/null 2>&1; do
     MGMT_HOST=$(ui_prompt_text "Management SSH host (or press Enter to retry ping)")
     if [[ -n "$MGMT_HOST" ]]; then
       MGMT_USER=$(ui_prompt_text "SSH user for $MGMT_HOST" "ubuntu")
-      ui_step "Copying bootstrap-node.sh to $MGMT_USER@$MGMT_HOST..."
+      ui_step "Copying bootstrap-node.sh and llama-server.service to $MGMT_USER@$MGMT_HOST..."
       scp -o ConnectTimeout=8 "$SCRIPT_DIR/../inference/bootstrap-node.sh" "${MGMT_USER}@${MGMT_HOST}:/tmp/bootstrap-node.sh"
+      if [[ -f "$PROJECT_ROOT/configs/inference/llama-server.service" ]]; then
+        scp -o ConnectTimeout=8 "$PROJECT_ROOT/configs/inference/llama-server.service" "${MGMT_USER}@${MGMT_HOST}:/tmp/llama-server.service"
+      fi
       ui_step "Executing remote bootstrap on $MGMT_HOST..."
-      ssh -t -o ConnectTimeout=8 "${MGMT_USER}@${MGMT_HOST}" "sudo bash /tmp/bootstrap-node.sh" || true
+      ssh -t -o ConnectTimeout=8 "${MGMT_USER}@${MGMT_HOST}" "sudo bash /tmp/bootstrap-node.sh --service-file /tmp/llama-server.service" || true
     fi
     PING_ATTEMPTS=0
   fi
@@ -207,13 +210,25 @@ if check_host_tcp_connection "$INFERENCE_HOST" "$INFERENCE_PORT"; then
   ui_success "Mac host TCP connection established (port $INFERENCE_PORT open)"
 else
   ui_error "TCP port $INFERENCE_PORT is closed on $INFERENCE_HOST."
-  ui_info "Ensure llama-server is running on the inference PC: ss -lntp | grep :$INFERENCE_PORT"
+  ui_info "Check service on inference PC: sudo systemctl status llama-server"
+  ui_info "Check listener on inference PC: ss -lntp | grep :$INFERENCE_PORT"
   ui_warning "Continuing checks to collect full diagnostic report."
 fi
 
 # ── Test 2: Mac Host HTTP Health Endpoint ──
 ui_step "Test 2/5: Mac Host → HTTP ${INFERENCE_HOST}:${INFERENCE_PORT}${INFERENCE_HEALTH_ENDPOINT}..."
-if check_host_http_health "$INFERENCE_HOST" "$INFERENCE_PORT" "$INFERENCE_HEALTH_ENDPOINT"; then
+printf "  Checking endpoint"
+HTTP_OK=false
+for _ in {1..6}; do
+  if check_host_http_health "$INFERENCE_HOST" "$INFERENCE_PORT" "$INFERENCE_HEALTH_ENDPOINT"; then
+    HTTP_OK=true
+    break
+  fi
+  printf "."
+  sleep 1
+done
+echo
+if $HTTP_OK; then
   ui_success "Mac host HTTP health check passed"
 else
   ui_warning "Mac host HTTP health endpoint not responding (model may still be loading)."

@@ -49,6 +49,37 @@ class InferenceConfig(BaseModel):
     port: int = Field(default=8080, ge=1, le=65535)
     health_endpoint: str = Field(default="/health", pattern=r"^/.*")
     protocol: Literal["http", "https"] = "http"
+    service_user: str = Field(default="ubuntu", min_length=1)
+    working_directory: str = Field(default="/home/ubuntu", min_length=1)
+    binary_path: str = Field(default="/usr/local/bin/llama-server", min_length=1)
+    model_path: str = Field(
+        default="/home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf",
+        min_length=1,
+    )
+    extra_args: list[str] = Field(
+        default_factory=lambda: [
+            "--fit",
+            "on",
+            "-fa",
+            "on",
+            "-ctk",
+            "q4_0",
+            "-ctv",
+            "q4_0",
+            "-c",
+            "32768",
+            "-t",
+            "14",
+            "-cnv",
+        ]
+    )
+
+    @field_validator("extra_args", mode="before")
+    @classmethod
+    def validate_extra_args(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.split()
+        return v
 
 
 class NetworkConfig(BaseModel):
@@ -88,6 +119,11 @@ ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
     "INFERENCE_PORT": ("inference", "port"),
     "INFERENCE_HEALTH_ENDPOINT": ("inference", "health_endpoint"),
     "INFERENCE_PROTOCOL": ("inference", "protocol"),
+    "INFERENCE_SERVICE_USER": ("inference", "service_user"),
+    "INFERENCE_WORKING_DIRECTORY": ("inference", "working_directory"),
+    "INFERENCE_BINARY_PATH": ("inference", "binary_path"),
+    "INFERENCE_MODEL_PATH": ("inference", "model_path"),
+    "INFERENCE_EXTRA_ARGS": ("inference", "extra_args"),
     "PLATFORM_DOMAIN": ("domain",),
 }
 
@@ -135,6 +171,8 @@ def _apply_env_overrides(
                     target[leaf] = int(val_str)
                 except ValueError:
                     target[leaf] = val_str
+            elif leaf == "extra_args":
+                target[leaf] = val_str.split() if isinstance(val_str, str) else val_str
             else:
                 target[leaf] = val_str
     return raw_config
@@ -263,7 +301,7 @@ def validate_platform(
 
 
 def resolve_platform(root_dir: Path, env_vars: dict[str, str] | None = None) -> ResolvedPlatform:
-    config = load_platform_config(root_dir)
+    config = load_platform_config(root_dir, env_vars=env_vars)
     versions = load_versions(root_dir)
     services_dir = root_dir / "services"
     all_manifests = load_all_service_manifests(services_dir)

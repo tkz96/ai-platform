@@ -139,6 +139,10 @@ inference_bind_host="10.42.0.2"
 inference_port="8080"
 inference_health_endpoint="/health"
 inference_protocol="http"
+inference_service_user="ubuntu"
+inference_working_directory="/home/ubuntu"
+inference_binary_path="/usr/local/bin/llama-server"
+inference_model_path="/home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf"
 platform_domain="ai.xynotech.internal"
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -147,12 +151,20 @@ if [[ -f "$ENV_FILE" ]]; then
   inference_port=$(grep '^INFERENCE_PORT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "8080")
   inference_health_endpoint=$(grep '^INFERENCE_HEALTH_ENDPOINT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "/health")
   inference_protocol=$(grep '^INFERENCE_PROTOCOL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "http")
+  inference_service_user=$(grep '^INFERENCE_SERVICE_USER=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "ubuntu")
+  inference_working_directory=$(grep '^INFERENCE_WORKING_DIRECTORY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "/home/ubuntu")
+  inference_binary_path=$(grep '^INFERENCE_BINARY_PATH=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "/usr/local/bin/llama-server")
+  inference_model_path=$(grep '^INFERENCE_MODEL_PATH=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "/home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf")
   platform_domain=$(grep '^PLATFORM_DOMAIN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "ai.xynotech.internal")
   [[ -z "$inference_host" ]] && inference_host="10.42.0.2"
   [[ -z "$inference_bind_host" ]] && inference_bind_host="10.42.0.2"
   [[ -z "$inference_port" ]] && inference_port="8080"
   [[ -z "$inference_health_endpoint" ]] && inference_health_endpoint="/health"
   [[ -z "$inference_protocol" ]] && inference_protocol="http"
+  [[ -z "$inference_service_user" ]] && inference_service_user="ubuntu"
+  [[ -z "$inference_working_directory" ]] && inference_working_directory="/home/ubuntu"
+  [[ -z "$inference_binary_path" ]] && inference_binary_path="/usr/local/bin/llama-server"
+  [[ -z "$inference_model_path" ]] && inference_model_path="/home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf"
   [[ -z "$platform_domain" ]] && platform_domain="ai.xynotech.internal"
 fi
 
@@ -198,6 +210,10 @@ INFERENCE_BIND_HOST=${inference_bind_host}
 INFERENCE_PORT=${inference_port}
 INFERENCE_HEALTH_ENDPOINT=${inference_health_endpoint}
 INFERENCE_PROTOCOL=${inference_protocol}
+INFERENCE_SERVICE_USER=${inference_service_user}
+INFERENCE_WORKING_DIRECTORY=${inference_working_directory}
+INFERENCE_BINARY_PATH=${inference_binary_path}
+INFERENCE_MODEL_PATH=${inference_model_path}
 PLATFORM_DOMAIN=${platform_domain}
 EOF
 

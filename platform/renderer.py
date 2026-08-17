@@ -12,7 +12,7 @@ class IndentedDumper(yaml.Dumper):
 
 
 def _render_service_templates(root_dir: Path, resolved: ResolvedPlatform) -> list[Path]:
-    """Render all Jinja2 templates in templates/<service>/ to configs/<service>/."""
+    """Render all Jinja2 templates in templates/<service>/ and templates/inference/ to configs/."""
     templates_dir = root_dir / "templates"
     configs_dir = root_dir / "configs"
     rendered_files: list[Path] = []
@@ -28,19 +28,24 @@ def _render_service_templates(root_dir: Path, resolved: ResolvedPlatform) -> lis
 
     env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
 
-    for service_name in resolved.config.services:
-        service_template_dir = templates_dir / service_name
-        if not service_template_dir.exists():
+    # Categories to render: configured container services + inference templates
+    categories = list(resolved.config.services)
+    if "inference" not in categories and (templates_dir / "inference").exists():
+        categories.append("inference")
+
+    for category in categories:
+        cat_template_dir = templates_dir / category
+        if not cat_template_dir.exists():
             continue
 
-        output_dir = configs_dir / service_name
+        output_dir = configs_dir / category
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        for template_path in service_template_dir.glob("*.j2"):
+        for template_path in cat_template_dir.glob("*.j2"):
             output_filename = template_path.stem
             output_file = output_dir / output_filename
 
-            template = env.get_template(f"{service_name}/{template_path.name}")
+            template = env.get_template(f"{category}/{template_path.name}")
             rendered_content = template.render(**context)
 
             if not rendered_content.endswith("\n"):

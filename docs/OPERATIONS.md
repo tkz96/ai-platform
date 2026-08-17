@@ -131,12 +131,31 @@ Perform these routine checks:
 - [ ] Check container restart counts with `podman ps`.
 - [ ] Verify GPU memory and temperature on the inference server.
 
+## Inference Node Service Management (Linux PC)
+
+The Linux inference node runs `llama-server` managed via systemd:
+
+```bash
+# View service status
+sudo systemctl status llama-server
+
+# View real-time logs
+sudo journalctl -u llama-server -f
+
+# Restart inference service
+sudo systemctl restart llama-server
+
+# Stop / Start service
+sudo systemctl stop llama-server
+sudo systemctl start llama-server
+```
+
 ## Troubleshooting
 
 | Service / Issue | Possible Cause | Verification | Solution |
 |---|---|---|---|
 | Mac cannot ping 10.42.0.2 | Ethernet cable unplugged or wrong NIC | `./bootstrap.sh doctor` | Check physical cable, run `ifconfig`, or rerun `./bootstrap.sh connect-inference` |
-| TCP 8080 closed on 10.42.0.2 | llama-server not running on Linux PC | `nc -z 10.42.0.2 8080` | On Linux PC, verify listener: `ss -lntp \| grep :8080` and start `llama-server --host 10.42.0.2 --port 8080` |
+| TCP 8080 closed on 10.42.0.2 | llama-server not running on Linux PC | `nc -z 10.42.0.2 8080` | Check service: `sudo systemctl status llama-server` and `journalctl -u llama-server -n 50` |
 | Mac host OK but Podman VM fails | Podman VM networking issue | `./bootstrap.sh doctor` | Restart Podman machine: `podman machine stop && podman machine start` |
 | LiteLLM cannot reach inference | Pinned host/port mismatch or firewall | `curl http://10.42.0.2:8080/health` | Check `INFERENCE_HOST` in `.env` and Linux firewall |
 | LiteLLM endpoint failing | Container stopped or un-rendered config | `./bootstrap.sh status` | Check logs with `./bootstrap.sh logs litellm` |

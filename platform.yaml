@@ -8,6 +8,24 @@ inference:
   port: 8080
   health_endpoint: /health
   protocol: http
+  service_user: ubuntu
+  working_directory: /home/ubuntu
+  binary_path: /usr/local/bin/llama-server
+  model_path: /home/ubuntu/AI/Models/GGUF/Qwen/Qwen3.6-35B-A3B-UD-Q5_K_S.gguf
+  extra_args:
+    - "--fit"
+    - "on"
+    - "-fa"
+    - "on"
+    - "-ctk"
+    - "q4_0"
+    - "-ctv"
+    - "q4_0"
+    - "-c"
+    - "32768"
+    - "-t"
+    - "14"
+    - "-cnv"
 
 network:
   name: ai-platform

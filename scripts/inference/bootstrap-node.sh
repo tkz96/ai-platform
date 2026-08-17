@@ -20,12 +20,17 @@ NETPLAN_FILE="/etc/netplan/99-ai-platform-node.yaml"
 ENABLE_NAT_GATEWAY=false
 FORCE=false
 SPECIFIED_IFACE=""
+SERVICE_FILE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --interface|-i)
       SPECIFIED_IFACE="$2"
+      shift 2
+      ;;
+    --service-file|-s)
+      SERVICE_FILE="$2"
       shift 2
       ;;
     --enable-nat-gateway)
@@ -38,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: sudo $0 [--interface <iface>] [--enable-nat-gateway] [--force]" >&2
+      echo "Usage: sudo $0 [--interface <iface>] [--service-file <path>] [--enable-nat-gateway] [--force]" >&2
       exit 1
       ;;
   esac
@@ -228,14 +233,71 @@ if [[ "$ENABLE_NAT_GATEWAY" == "true" ]]; then
   fi
 fi
 
+# ── 5. Install and Configure llama-server systemd Service ────────────────────
+
+SERVICE_SRC=""
+if [[ -n "${SERVICE_FILE:-}" && -f "$SERVICE_FILE" ]]; then
+  SERVICE_SRC="$SERVICE_FILE"
+elif [[ -f "$(dirname "$0")/../../configs/inference/llama-server.service" ]]; then
+  SERVICE_SRC="$(dirname "$0")/../../configs/inference/llama-server.service"
+elif [[ -f "$(dirname "$0")/llama-server.service" ]]; then
+  SERVICE_SRC="$(dirname "$0")/llama-server.service"
+elif [[ -f "/tmp/llama-server.service" ]]; then
+  SERVICE_SRC="/tmp/llama-server.service"
+fi
+
+if [[ -n "$SERVICE_SRC" && -f "$SERVICE_SRC" ]]; then
+  echo "→ Installing managed llama-server systemd service..."
+  cp "$SERVICE_SRC" /etc/systemd/system/llama-server.service
+  chmod 644 /etc/systemd/system/llama-server.service
+  systemctl daemon-reload
+  systemctl enable llama-server.service >/dev/null 2>&1 || true
+  echo "✓ Installed /etc/systemd/system/llama-server.service (enabled)"
+
+  # Extract binary and model path from unit file for preflight verification
+  EXEC_LINE=$(grep '^ExecStart=' /etc/systemd/system/llama-server.service || true)
+  BIN_PATH=$(echo "$EXEC_LINE" | awk '{print $1}' | sed 's/ExecStart=//' || true)
+  MODEL_PATH=$(echo "$EXEC_LINE" | grep -oE -- '--model [^ ]+' | awk '{print $2}' || true)
+
+  BIN_OK=false
+  MODEL_OK=false
+
+  if [[ -n "$BIN_PATH" && -x "$BIN_PATH" ]] || command -v llama-server >/dev/null 2>&1; then
+    BIN_OK=true
+  fi
+
+  if [[ -n "$MODEL_PATH" && -f "$MODEL_PATH" ]]; then
+    MODEL_OK=true
+  fi
+
+  echo
+  echo "━━━ Inference Prerequisites Preflight ━━━"
+  echo "  Binary ($BIN_PATH): $( $BIN_OK && echo "FOUND" || echo "MISSING" )"
+  echo "  Model  ($MODEL_PATH): $( $MODEL_OK && echo "FOUND" || echo "MISSING" )"
+
+  if $BIN_OK && $MODEL_OK; then
+    echo "→ Starting llama-server service..."
+    systemctl restart llama-server.service
+    echo "✓ llama-server service active"
+  else
+    echo
+    echo "⚠️  Notice: Service is installed and enabled, but not started yet because prerequisites are pending."
+    echo "    To start once files are in place:"
+    echo "      sudo systemctl restart llama-server"
+    echo "      sudo systemctl status llama-server"
+  fi
+fi
+
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Inference Node Network Setup Complete!"
+echo "  Inference Node Setup Complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Interface   : $ETH_IF"
 echo "  Static IP   : $NODE_IP/$SUBNET_MASK"
 echo "  MAC Address : $MAC_ADDR"
 echo
-echo "  Next step: Start llama-server bound to the inference interface:"
-echo "    llama-server --host $NODE_IP --port 8080 --model <path-to-model.gguf>"
+echo "  Service Commands:"
+echo "    sudo systemctl status llama-server"
+echo "    sudo journalctl -u llama-server -f"
+echo "    sudo systemctl restart llama-server"
 echo

@@ -30,3 +30,8 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# OS metadata
+.DS_Store
+*/.DS_Store
+
