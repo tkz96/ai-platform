@@ -2,7 +2,7 @@ model_list:
   - model_name: {{ platform.default_model }}
     litellm_params:
       model: openai/{{ platform.default_model }}
-      api_base: http://{{ platform.inference.host }}:{{ platform.inference.port }}/v1
+      api_base: {{ platform.inference.protocol }}://{{ platform.inference.host }}:{{ platform.inference.port }}/v1
 
 general_settings:
   master_key: ${LITELLM_MASTER_KEY}

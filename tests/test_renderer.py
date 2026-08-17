@@ -37,3 +37,14 @@ def test_env_file_rendering() -> None:
     resolved.dependency_order.append("test_svc")
     compose_dict = generate_compose_dict(resolved)
     assert compose_dict["services"]["test_svc"]["env_file"] == [".env", ".env.local"]
+
+
+def test_litellm_template_rendering() -> None:
+    repo_root = Path(__file__).parent.parent
+    resolved = resolve_platform(repo_root)
+    render_all(repo_root, resolved)
+
+    litellm_cfg = repo_root / "configs" / "litellm" / "config.yaml"
+    assert litellm_cfg.exists()
+    content = litellm_cfg.read_text()
+    assert "api_base: http://10.42.0.2:8080/v1" in content

@@ -43,6 +43,7 @@ source "$LIB_DIR/ui.sh"
 source "$LIB_DIR/state.sh"
 source "$LIB_DIR/ports.sh"
 source "$LIB_DIR/podman.sh"
+source "$LIB_DIR/networking.sh"
 
 # ── Version ─────────────────────────────────────────────────────────────────
 
@@ -305,7 +306,9 @@ run_doctor() {
   compose_cmd=$(podman_compose_cmd)
   if $compose_cmd ps >/dev/null 2>&1; then
     local running_count
-    running_count=$($compose_cmd ps 2>/dev/null | grep -c "Up" || echo "0")
+    running_count=$($compose_cmd ps 2>/dev/null | grep -c "Up" || true)
+    running_count="${running_count//[^0-9]/}"
+    [[ -z "$running_count" ]] && running_count=0
     if (( running_count > 0 )); then
       ui_success "$running_count services running"
     else
@@ -313,6 +316,73 @@ run_doctor() {
     fi
   else
     ui_warning "Cannot query services — Podman not ready"
+  fi
+
+  ui_section "Inference Node & Network Topology"
+
+  local inf_host="10.42.0.2"
+  local inf_port="8080"
+  local inf_endpoint="/health"
+  if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    inf_host=$(grep '^INFERENCE_HOST=' "$PROJECT_ROOT/.env" 2>/dev/null | cut -d= -f2- || echo "10.42.0.2")
+    inf_port=$(grep '^INFERENCE_PORT=' "$PROJECT_ROOT/.env" 2>/dev/null | cut -d= -f2- || echo "8080")
+    inf_endpoint=$(grep '^INFERENCE_HEALTH_ENDPOINT=' "$PROJECT_ROOT/.env" 2>/dev/null | cut -d= -f2- || echo "/health")
+    [[ -z "$inf_host" ]] && inf_host="10.42.0.2"
+    [[ -z "$inf_port" ]] && inf_port="8080"
+    [[ -z "$inf_endpoint" ]] && inf_endpoint="/health"
+  fi
+
+  # Check physical Ethernet candidates
+  local eth_candidates
+  eth_candidates=$(list_physical_ethernet_candidates 2>/dev/null || true)
+  if [[ -n "$eth_candidates" ]]; then
+    local active_found=false
+    while IFS= read -r cand; do
+      [[ -z "$cand" ]] && continue
+      local c_dev
+      c_dev=$(echo "$cand" | cut -d'|' -f2)
+      if interface_has_link "$c_dev"; then
+        active_found=true
+        local c_ip
+        c_ip=$(interface_get_ip "$c_dev")
+        ui_success "Mac Ethernet ($c_dev): carrier ACTIVE (IP: ${c_ip:-none})"
+      fi
+    done <<< "$eth_candidates"
+    if ! $active_found; then
+      ui_warning "Mac Ethernet: physical carrier DOWN on candidate interfaces"
+    fi
+  else
+    ui_warning "Mac Ethernet: no physical Ethernet ports found"
+  fi
+
+  # Check node reachability (ping)
+  if ping -c 1 -W 2 "$inf_host" >/dev/null 2>&1; then
+    ui_success "Inference node ($inf_host): REACHABLE"
+  else
+    ui_warning "Inference node ($inf_host): UNREACHABLE via ping"
+  fi
+
+  # Check Mac Host TCP to port
+  if check_host_tcp_connection "$inf_host" "$inf_port"; then
+    ui_success "Inference TCP ($inf_host:$inf_port): OPEN"
+  else
+    ui_warning "Inference TCP ($inf_host:$inf_port): CLOSED"
+  fi
+
+  # Check Mac Host HTTP Health
+  if check_host_http_health "$inf_host" "$inf_port" "$inf_endpoint"; then
+    ui_success "Inference HTTP API ($inf_host:$inf_port$inf_endpoint): HEALTHY"
+  else
+    ui_warning "Inference HTTP API ($inf_host:$inf_port$inf_endpoint): PENDING/UNHEALTHY"
+  fi
+
+  # Check Podman VM reachability if podman is running
+  if podman info >/dev/null 2>&1; then
+    if check_podman_vm_health "$inf_host" "$inf_port" "$inf_endpoint"; then
+      ui_success "Podman VM → Inference node: HEALTHY"
+    else
+      ui_warning "Podman VM → Inference node: UNREACHABLE"
+    fi
   fi
 
   echo

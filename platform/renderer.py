@@ -65,7 +65,7 @@ def generate_compose_dict(resolved: ResolvedPlatform) -> dict[str, Any]:
             "image": image_name,
             "container_name": service_name,
             "restart": "unless-stopped",
-            "networks": [resolved.config.network],
+            "networks": [resolved.config.network.name],
         }
 
         # Ports
@@ -121,7 +121,7 @@ def generate_compose_dict(resolved: ResolvedPlatform) -> dict[str, Any]:
     compose_dict = {
         "name": resolved.config.name,
         "services": compose_services,
-        "networks": {resolved.config.network: {"driver": "bridge"}},
+        "networks": {resolved.config.network.name: {"driver": "bridge"}},
     }
 
     return compose_dict

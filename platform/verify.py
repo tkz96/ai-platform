@@ -4,6 +4,7 @@ import urllib.request
 from platform.config import ResolvedPlatform, ServiceManifest
 from typing import Any
 
+from rich.console import Group
 from rich.table import Table
 
 
@@ -57,26 +58,82 @@ def verify_service(service_name: str, manifest: ServiceManifest) -> dict[str, An
     }
 
 
-def verify_platform(resolved: ResolvedPlatform) -> list[dict[str, Any]]:
+def verify_remote_inference(resolved: ResolvedPlatform) -> list[dict[str, Any]]:
+    inf = resolved.config.inference
     results: list[dict[str, Any]] = []
-    for service_name in resolved.dependency_order:
-        manifest = resolved.services[service_name]
-        results.append(verify_service(service_name, manifest))
+
+    # 1. TCP connectivity
+    tcp_passed, tcp_msg = check_tcp_port(inf.host, inf.port)
+    results.append(
+        {
+            "name": "inference_tcp",
+            "endpoint": f"tcp://{inf.host}:{inf.port}",
+            "status": "HEALTHY" if tcp_passed else f"UNHEALTHY ({tcp_msg})",
+            "passed": tcp_passed,
+        }
+    )
+
+    # 2. HTTP health check
+    health_url = f"{inf.protocol}://{inf.host}:{inf.port}{inf.health_endpoint}"
+    http_passed, http_msg = check_endpoint(health_url)
+    results.append(
+        {
+            "name": "inference_api",
+            "endpoint": health_url,
+            "status": "HEALTHY" if http_passed else f"UNHEALTHY ({http_msg})",
+            "passed": http_passed,
+        }
+    )
+
     return results
 
 
-def format_health_table(results: list[dict[str, Any]]) -> Table:
-    table = Table(title="AI Platform Service Status")
-    table.add_column("Service", style="cyan", no_wrap=True)
-    table.add_column("Endpoint", style="blue")
-    table.add_column("Status", style="bold")
+def verify_platform(resolved: ResolvedPlatform) -> dict[str, Any]:
+    local_results: list[dict[str, Any]] = []
+    for service_name in resolved.dependency_order:
+        manifest = resolved.services[service_name]
+        local_results.append(verify_service(service_name, manifest))
 
-    for r in results:
+    remote_results = verify_remote_inference(resolved)
+
+    return {
+        "local_services": local_results,
+        "remote_inference": remote_results,
+    }
+
+
+def format_health_table(results: dict[str, Any] | list[dict[str, Any]]) -> Group:
+    if isinstance(results, list):
+        local_results = results
+        remote_results = []
+    else:
+        local_results = results.get("local_services", [])
+        remote_results = results.get("remote_inference", [])
+
+    local_table = Table(title="Local Platform Services (Control Plane)")
+    local_table.add_column("Service", style="cyan", no_wrap=True)
+    local_table.add_column("Endpoint", style="blue")
+    local_table.add_column("Status", style="bold")
+
+    for r in local_results:
         status_style = "green" if r["passed"] else "red"
-        table.add_row(
+        local_table.add_row(
             r["name"],
             r.get("endpoint", "N/A"),
             f"[{status_style}]{r['status']}[/{status_style}]",
         )
 
-    return table
+    remote_table = Table(title="Remote Inference Node")
+    remote_table.add_column("Check", style="cyan", no_wrap=True)
+    remote_table.add_column("Endpoint", style="blue")
+    remote_table.add_column("Status", style="bold")
+
+    for r in remote_results:
+        status_style = "green" if r["passed"] else "yellow"
+        remote_table.add_row(
+            r["name"],
+            r.get("endpoint", "N/A"),
+            f"[{status_style}]{r['status']}[/{status_style}]",
+        )
+
+    return Group(local_table, remote_table)

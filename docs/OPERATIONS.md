@@ -135,9 +135,12 @@ Perform these routine checks:
 
 | Service / Issue | Possible Cause | Verification | Solution |
 |---|---|---|---|
+| Mac cannot ping 10.42.0.2 | Ethernet cable unplugged or wrong NIC | `./bootstrap.sh doctor` | Check physical cable, run `ifconfig`, or rerun `./bootstrap.sh connect-inference` |
+| TCP 8080 closed on 10.42.0.2 | llama-server not running on Linux PC | `nc -z 10.42.0.2 8080` | On Linux PC, verify listener: `ss -lntp \| grep :8080` and start `llama-server --host 10.42.0.2 --port 8080` |
+| Mac host OK but Podman VM fails | Podman VM networking issue | `./bootstrap.sh doctor` | Restart Podman machine: `podman machine stop && podman machine start` |
+| LiteLLM cannot reach inference | Pinned host/port mismatch or firewall | `curl http://10.42.0.2:8080/health` | Check `INFERENCE_HOST` in `.env` and Linux firewall |
 | LiteLLM endpoint failing | Container stopped or un-rendered config | `./bootstrap.sh status` | Check logs with `./bootstrap.sh logs litellm` |
-| LiteLLM cannot reach inference | Inference server offline or port blocked | `curl http://<inference_host>:<port>/health` | Verify inference server status and network connectivity |
 | Langfuse UI unavailable | Relational or analytics database offline | `./bootstrap.sh status` | Ensure `postgres`, `clickhouse`, and `redis` containers are healthy |
-| Render command fails | Configuration schema error | `./bootstrap.sh verify` | Fix syntax errors in `platform.yaml` or `services/*.yaml` |
+| Render command fails | Configuration schema error | `make render` | Fix syntax errors in `platform.yaml` or `services/*.yaml` |
 | Podman machine not running | Machine stopped or not initialized | `./bootstrap.sh doctor` | Run `./bootstrap.sh` to initialize and start the machine |
 | Port conflict | Another process using a required port | `./bootstrap.sh doctor` | Stop the conflicting process or use an alternative port |

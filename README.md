@@ -1,19 +1,21 @@
 # AI Platform
 
-Self-hosted AI infrastructure. Runs inference, request routing, and observability as containers on a single machine.
+Self-hosted AI infrastructure with an explicit Control Plane (Mac Mini) + Inference Node (Linux PC) architecture over a dedicated private Ethernet link (`10.42.0.0/24`).
 
 ## Purpose
 
-This repository provisions and manages an AI platform with one command.
+This repository provisions and manages a two-node AI platform with declarative YAML, automated rendering, and strict network safety.
 
-It replaces manual server configuration with declarative YAML and automated rendering.
+- **Control Plane (Mac Mini)**: Runs request routing (Caddy), API gateway (LiteLLM), observability (Langfuse), and data storage (Postgres, ClickHouse, Redis) in rootless Podman containers.
+- **Inference Node (Linux PC)**: Runs high-performance model inference (`llama-server` / Qwen) on dedicated GPU hardware.
 
 ## Features
 
-- **One-click install**: `./bootstrap.sh` sets up everything on a fresh Mac.
-- **Configuration-driven**: YAML defines the platform. Python builds it. Jinja2 renders it.
-- **Reproducible**: Clone, install, deploy. Every run produces the same result.
-- **Rootless**: Uses Podman with unprivileged ports (8080/8443).
+- **Multi-Node Architecture**: Explicit separation of control plane services from GPU inference hardware.
+- **Dedicated Private Network**: Point-to-point Ethernet link (`10.42.0.1` ↔ `10.42.0.2`) with zero disruption to existing Internet/LAN connections.
+- **Configuration-Driven**: YAML defines the platform. Python builds it. Jinja2 renders it.
+- **Reproducible & Validated**: Multi-stage verification from host TCP to Podman VM and end-to-end model completion.
+- **Rootless & Secure**: Uses rootless Podman with unprivileged ports (8080/8443) and local-only service exposure.
 
 ## Repository Layout
 

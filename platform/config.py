@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PortMapping(BaseModel):
@@ -42,17 +44,35 @@ class VersionsConfig(BaseModel):
 
 
 class InferenceConfig(BaseModel):
-    host: str
-    port: int
+    host: str = Field(default="10.42.0.2", min_length=1)
+    bind_host: str = Field(default="10.42.0.2", min_length=1)
+    port: int = Field(default=8080, ge=1, le=65535)
+    health_endpoint: str = Field(default="/health", pattern=r"^/.*")
+    protocol: Literal["http", "https"] = "http"
+
+
+class NetworkConfig(BaseModel):
+    name: str = "ai-platform"
+    probe_image: str = (
+        "docker.io/curlimages/curl@sha256:"
+        "c3b8bee303c6c6beed656cfc921218c529d65aa61114eb9e27c62047a1271b9b"
+    )
 
 
 class PlatformConfig(BaseModel):
     name: str
     domain: str
     default_model: str = "qwen2.5-coder"
-    inference: InferenceConfig
-    network: str
+    inference: InferenceConfig = Field(default_factory=InferenceConfig)
+    network: NetworkConfig = Field(default_factory=NetworkConfig)
     services: list[str]
+
+    @field_validator("network", mode="before")
+    @classmethod
+    def validate_network(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return NetworkConfig(name=v)
+        return v
 
 
 class ResolvedPlatform(BaseModel):
@@ -62,11 +82,77 @@ class ResolvedPlatform(BaseModel):
     dependency_order: list[str]
 
 
-def load_platform_config(root_dir: Path) -> PlatformConfig:
+ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "INFERENCE_HOST": ("inference", "host"),
+    "INFERENCE_BIND_HOST": ("inference", "bind_host"),
+    "INFERENCE_PORT": ("inference", "port"),
+    "INFERENCE_HEALTH_ENDPOINT": ("inference", "health_endpoint"),
+    "INFERENCE_PROTOCOL": ("inference", "protocol"),
+    "PLATFORM_DOMAIN": ("domain",),
+}
+
+
+def _parse_dotenv(env_path: Path) -> dict[str, str]:
+    """Parse a simple KEY=VALUE .env file without external dependencies."""
+    result: dict[str, str] = {}
+    if not env_path.exists():
+        return result
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip()
+            # Strip surrounding quotes if present
+            if len(val) >= 2 and (
+                (val.startswith('"') and val.endswith('"'))
+                or (val.startswith("'") and val.endswith("'"))
+            ):
+                val = val[1:-1]
+            result[key] = val
+    return result
+
+
+def _apply_env_overrides(
+    raw_config: dict[str, Any], effective_env: dict[str, str]
+) -> dict[str, Any]:
+    """Apply environment overrides to raw YAML dict based on ENV_OVERRIDES."""
+    for env_key, path in ENV_OVERRIDES.items():
+        if env_key in effective_env and effective_env[env_key] != "":
+            val_str = effective_env[env_key]
+            # Convert types appropriately
+            target: dict[str, Any] = raw_config
+            for part in path[:-1]:
+                if part not in target or not isinstance(target[part], dict):
+                    target[part] = {}
+                target = target[part]
+
+            leaf = path[-1]
+            if leaf == "port":
+                try:
+                    target[leaf] = int(val_str)
+                except ValueError:
+                    target[leaf] = val_str
+            else:
+                target[leaf] = val_str
+    return raw_config
+
+
+def load_platform_config(root_dir: Path, env_vars: dict[str, str] | None = None) -> PlatformConfig:
     config_path = root_dir / "platform.yaml"
     if not config_path.exists():
         raise FileNotFoundError(f"Platform config not found at {config_path}")
-    raw = yaml.safe_load(config_path.read_text())
+    raw = yaml.safe_load(config_path.read_text()) or {}
+
+    # Precedence: platform.yaml defaults -> .env -> os.environ -> explicit env_vars
+    effective_env = _parse_dotenv(root_dir / ".env")
+    effective_env.update(dict(os.environ))
+    if env_vars:
+        effective_env.update(env_vars)
+
+    raw = _apply_env_overrides(raw, effective_env)
     return PlatformConfig.model_validate(raw)
 
 

@@ -133,6 +133,29 @@ nextauth_secret=$(get_or_generate \
   "$SECRETS_DIR/nextauth_secret" \
   "a NextAuth secret")
 
+# Read existing inference settings if .env already exists
+inference_host="10.42.0.2"
+inference_bind_host="10.42.0.2"
+inference_port="8080"
+inference_health_endpoint="/health"
+inference_protocol="http"
+platform_domain="ai.xynotech.internal"
+
+if [[ -f "$ENV_FILE" ]]; then
+  inference_host=$(grep '^INFERENCE_HOST=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "10.42.0.2")
+  inference_bind_host=$(grep '^INFERENCE_BIND_HOST=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "10.42.0.2")
+  inference_port=$(grep '^INFERENCE_PORT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "8080")
+  inference_health_endpoint=$(grep '^INFERENCE_HEALTH_ENDPOINT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "/health")
+  inference_protocol=$(grep '^INFERENCE_PROTOCOL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "http")
+  platform_domain=$(grep '^PLATFORM_DOMAIN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "ai.xynotech.internal")
+  [[ -z "$inference_host" ]] && inference_host="10.42.0.2"
+  [[ -z "$inference_bind_host" ]] && inference_bind_host="10.42.0.2"
+  [[ -z "$inference_port" ]] && inference_port="8080"
+  [[ -z "$inference_health_endpoint" ]] && inference_health_endpoint="/health"
+  [[ -z "$inference_protocol" ]] && inference_protocol="http"
+  [[ -z "$platform_domain" ]] && platform_domain="ai.xynotech.internal"
+fi
+
 # ── Write .env ─────────────────────────────────────────────────────────────
 
 ui_section "Writing .env"
@@ -170,9 +193,12 @@ CLICKHOUSE_USER=clickhouse
 CLICKHOUSE_PASSWORD=${clickhouse_password}
 
 # Platform & Inference Settings
-INFERENCE_HOST=127.0.0.1
-INFERENCE_PORT=8080
-PLATFORM_DOMAIN=ai.xynotech.internal
+INFERENCE_HOST=${inference_host}
+INFERENCE_BIND_HOST=${inference_bind_host}
+INFERENCE_PORT=${inference_port}
+INFERENCE_HEALTH_ENDPOINT=${inference_health_endpoint}
+INFERENCE_PROTOCOL=${inference_protocol}
+PLATFORM_DOMAIN=${platform_domain}
 EOF
 
 chmod 600 "$ENV_FILE"

@@ -151,11 +151,17 @@ flowchart LR
 
 ## Network Model
 
-All services share a single bridge network (`ai-platform`).
+The architecture uses a two-tier network design:
 
-- Clients connect through Caddy on ports 8080/8443.
-- Inference servers accept requests only from LiteLLM.
-- Databases are not exposed outside the container network in production.
+1. **Control Plane Internal Network (`ai-platform`)**:
+   - A bridge network inside the Mac Mini Podman environment connecting Caddy, LiteLLM, Langfuse, Postgres, ClickHouse, and Redis.
+   - Databases and internal ports are isolated within the container network.
+   - External clients connect exclusively through Caddy on ports 8080/8443.
+
+2. **Dedicated Private Inference Network (`10.42.0.0/24`)**:
+   - A dedicated point-to-point Ethernet link directly connecting the Mac Mini (`10.42.0.1/24`) and the Linux Inference PC (`10.42.0.2/24`).
+   - LiteLLM forwards requests across this link to `http://10.42.0.2:8080/v1`.
+   - **Safety Invariant**: No default gateway, no DNS nameservers, and no NAT are installed on this private interface by default, fully preserving both machines' existing default routes and internet connections.
 
 ## Security Model
 
