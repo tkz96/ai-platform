@@ -129,8 +129,22 @@ run_install() {
   # Show ASCII art splash
   ui_splash
 
-  # Show system info and confirm
+  # Show system info
   ui_system_info
+
+  # Prominent early enrollment notice
+  echo
+  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "  ${BOLD}${CYAN}AI Platform — Linux Node Enrollment Notice${RESET}"
+  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "  Every fresh Linux inference PC must:"
+  echo -e "    1. Be running a fresh Ubuntu installation"
+  echo -e "    2. Be physically connected to this Mac directly or via switch"
+  echo -e "    3. Run the one-time enrollment command when prompted:"
+  echo -e "       ${DIM}wget -q http://10.42.0.1:8765/node-enroll.sh -O node-enroll.sh${RESET}"
+  echo -e "       ${DIM}chmod +x node-enroll.sh && sudo ./node-enroll.sh --token <TOKEN>${RESET}"
+  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo
 
   if ! ui_confirm "This installer will configure this Mac as an AI Platform server. Continue?"; then
     ui_info "Installation cancelled."
@@ -140,7 +154,8 @@ run_install() {
   # Initialize state
   state_init
 
-  # Run install phases in order
+  # Run install phases in order:
+  # secrets runs before networking so cluster SSH keys and session token are ready
   local phases=(
     "check-macos:00-check-macos.sh"
     "homebrew:01-homebrew.sh"
@@ -149,13 +164,12 @@ run_install() {
     "uv:04-uv.sh"
     "podman:05-podman.sh"
     "ports:06-ports.sh"
-    "networking:06a-networking.sh"
     "secrets:07-secrets.sh"
+    "networking:06a-networking.sh"
     "render:08-render.sh"
     "deploy:09-deploy.sh"
     "verify:10-verify.sh"
   )
-
 
   for entry in "${phases[@]}"; do
     local phase_name="${entry%%:*}"

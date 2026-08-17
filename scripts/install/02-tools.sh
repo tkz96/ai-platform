@@ -14,7 +14,7 @@ if [[ "$(uname -m)" == "arm64" ]] && [[ -f /opt/homebrew/bin/brew ]]; then
 fi
 
 # Check and install each tool
-tools=("git" "curl" "jq" "yq" "wget")
+tools=("git" "curl" "jq" "yq" "wget" "dnsmasq")
 
 for tool in "${tools[@]}"; do
   if command -v "$tool" >/dev/null 2>&1; then

@@ -50,6 +50,93 @@ def test_litellm_template_rendering() -> None:
     assert "api_base: http://10.42.0.2:8080/v1" in content
 
 
+def test_litellm_rendering_multi_node(tmp_path: Path) -> None:
+    from platform.nodes import (
+        ModelAssignment,
+        NodeDesiredConfig,
+        NodeIdentity,
+        NodeRecord,
+        NodeRegistry,
+        NodeRuntimeState,
+        save_registry,
+    )
+
+    repo_root = Path(__file__).parent.parent
+    # Setup tmp_path with templates and platform config
+    (tmp_path / "templates" / "litellm").mkdir(parents=True)
+    template_src = repo_root / "templates" / "litellm" / "config.yaml.j2"
+    (tmp_path / "templates" / "litellm" / "config.yaml.j2").write_text(template_src.read_text())
+
+    (tmp_path / "services").mkdir(parents=True)
+    (tmp_path / "services" / "litellm.yaml").write_text("""
+name: litellm
+image: ghcr.io/berriai/litellm
+version_key: litellm
+""")
+
+    (tmp_path / "platform.yaml").write_text("""
+name: test-platform
+domain: test.internal
+default_model: qwen3.6-35b-a3b
+services:
+  - litellm
+""")
+    (tmp_path / "versions.yaml").write_text("""
+platform: "0.1.0"
+services:
+  litellm: "v1.0.0"
+""")
+
+    # Populate registry with 1 healthy node and 1 unhealthy node
+    reg = NodeRegistry()
+    reg.nodes["node-01"] = NodeRecord(
+        identity=NodeIdentity(
+            id="node-01",
+            hostname="gpu-01",
+            mac_address="00:11:22:33:44:55",
+            reserved_ip="10.42.0.2",
+        ),
+        desired=NodeDesiredConfig(
+            models=[ModelAssignment(model_name="qwen3.6-35b-a3b", port=8080)]
+        ),
+        runtime=NodeRuntimeState(
+            status="ready",
+            http_healthy=True,
+            systemd_active=True,
+            active_model="qwen3.6-35b-a3b",
+        ),
+    )
+    reg.nodes["node-02"] = NodeRecord(
+        identity=NodeIdentity(
+            id="node-02",
+            hostname="gpu-02",
+            mac_address="00:aa:bb:cc:dd:ee",
+            reserved_ip="10.42.0.3",
+        ),
+        desired=NodeDesiredConfig(
+            models=[ModelAssignment(model_name="deepseek-r1-32b", port=8080)]
+        ),
+        runtime=NodeRuntimeState(
+            status="unhealthy",
+            http_healthy=False,
+            systemd_active=True,
+        ),
+    )
+    save_registry(tmp_path, reg)
+
+    resolved = resolve_platform(tmp_path)
+    render_all(tmp_path, resolved)
+
+    rendered_cfg = tmp_path / "configs" / "litellm" / "config.yaml"
+    assert rendered_cfg.exists()
+    content = rendered_cfg.read_text()
+    assert "model_name: qwen3.6-35b-a3b" in content
+    assert "api_base: http://10.42.0.2:8080/v1" in content
+    # Unhealthy node-02 must NOT be rendered in LiteLLM config
+    assert "deepseek-r1-32b" not in content
+    assert "10.42.0.3" not in content
+
+
 def test_llama_server_service_rendering() -> None:
     repo_root = Path(__file__).parent.parent
     resolved = resolve_platform(repo_root)

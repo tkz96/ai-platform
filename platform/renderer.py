@@ -11,6 +11,9 @@ class IndentedDumper(yaml.Dumper):
         return super().increase_indent(flow=flow, indentless=False)
 
 
+from platform.nodes import get_healthy_serving_nodes, load_registry
+
+
 def _render_service_templates(root_dir: Path, resolved: ResolvedPlatform) -> list[Path]:
     """Render all Jinja2 templates in templates/<service>/ and templates/inference/ to configs/."""
     templates_dir = root_dir / "templates"
@@ -20,10 +23,15 @@ def _render_service_templates(root_dir: Path, resolved: ResolvedPlatform) -> lis
     if not templates_dir.exists():
         return rendered_files
 
+    registry = load_registry(root_dir)
+    healthy_nodes = get_healthy_serving_nodes(registry)
+
     context = {
         "platform": resolved.config.model_dump(),
         "versions": resolved.versions.model_dump(),
         "services": {k: v.model_dump() for k, v in resolved.services.items()},
+        "registry": registry.model_dump(mode="json"),
+        "healthy_nodes": [n.model_dump(mode="json") for n in healthy_nodes],
     }
 
     env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)

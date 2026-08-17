@@ -84,6 +84,12 @@ class InferenceConfig(BaseModel):
 
 class NetworkConfig(BaseModel):
     name: str = "ai-platform"
+    subnet: str = "10.42.0.0/24"
+    mac_ip: str = "10.42.0.1"
+    node_ip_start: str = "10.42.0.2"
+    node_pool_size: int = 8
+    dhcp_pool_start: str = "10.42.0.100"
+    dhcp_pool_end: str = "10.42.0.200"
     probe_image: str = (
         "docker.io/curlimages/curl@sha256:"
         "c3b8bee303c6c6beed656cfc921218c529d65aa61114eb9e27c62047a1271b9b"
@@ -93,7 +99,7 @@ class NetworkConfig(BaseModel):
 class PlatformConfig(BaseModel):
     name: str
     domain: str
-    default_model: str = "qwen2.5-coder"
+    default_model: str = "qwen3.6-35b-a3b"
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     services: list[str]

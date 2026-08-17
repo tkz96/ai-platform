@@ -1,9 +1,11 @@
 import socket
 import urllib.error
 import urllib.request
-from platform.config import ResolvedPlatform, ServiceManifest
+from pathlib import Path
 from typing import Any
 
+from platform.config import ResolvedPlatform, ServiceManifest
+from platform.nodes import NodeRecord, NodeRegistry, load_registry
 from rich.console import Group
 from rich.table import Table
 
@@ -58,43 +60,87 @@ def verify_service(service_name: str, manifest: ServiceManifest) -> dict[str, An
     }
 
 
-def verify_remote_inference(resolved: ResolvedPlatform) -> list[dict[str, Any]]:
-    inf = resolved.config.inference
-    results: list[dict[str, Any]] = []
-
-    # 1. TCP connectivity
-    tcp_passed, tcp_msg = check_tcp_port(inf.host, inf.port)
-    results.append(
-        {
-            "name": "inference_tcp",
-            "endpoint": f"tcp://{inf.host}:{inf.port}",
-            "status": "HEALTHY" if tcp_passed else f"UNHEALTHY ({tcp_msg})",
-            "passed": tcp_passed,
-        }
+def verify_node(node: NodeRecord) -> dict[str, Any]:
+    ip = node.identity.reserved_ip
+    model_assign = node.desired.models[0] if node.desired.models else None
+    port = model_assign.port if model_assign else 8080
+    health_endpoint = model_assign.health_endpoint if model_assign else "/health"
+    proto = model_assign.protocol if model_assign else "http"
+    model_name = (
+        node.runtime.active_model
+        or (model_assign.model_name if model_assign else "Unknown")
     )
 
-    # 2. HTTP health check
+    tcp_passed, tcp_msg = check_tcp_port(ip, port)
+    health_url = f"{proto}://{ip}:{port}{health_endpoint}"
+    http_passed, http_msg = check_endpoint(health_url)
+
+    # Format hardware summary
+    hw_str = "CPU Mode"
+    if node.runtime.hardware and node.runtime.hardware.gpus:
+        gpus = node.runtime.hardware.gpus
+        gpu_summary = ", ".join(f"{g.name} ({g.vram_gb}GB)" for g in gpus)
+        hw_str = f"{gpu_summary} ({node.runtime.hardware.ram_gb}GB RAM)"
+    elif node.runtime.hardware:
+        hw_str = f"{node.runtime.hardware.cpu} ({node.runtime.hardware.ram_gb}GB RAM)"
+
+    return {
+        "node_id": node.identity.id,
+        "ip": ip,
+        "hardware": hw_str,
+        "active_model": model_name,
+        "tcp_passed": tcp_passed,
+        "tcp_status": "OPEN" if tcp_passed else f"CLOSED ({tcp_msg})",
+        "http_passed": http_passed,
+        "http_status": "OK" if http_passed else f"UNHEALTHY ({http_msg})",
+        "status": "READY" if (tcp_passed and http_passed) else "UNHEALTHY",
+        "passed": tcp_passed and http_passed,
+    }
+
+
+def verify_remote_inference(
+    resolved: ResolvedPlatform, root_dir: Path | None = None
+) -> list[dict[str, Any]]:
+    target_root = root_dir or Path.cwd()
+    registry = load_registry(target_root)
+
+    if registry.nodes:
+        results: list[dict[str, Any]] = []
+        for node in registry.nodes.values():
+            results.append(verify_node(node))
+        return results
+
+    # Fallback to single-node from platform.yaml if no nodes in registry yet
+    inf = resolved.config.inference
+    tcp_passed, tcp_msg = check_tcp_port(inf.host, inf.port)
     health_url = f"{inf.protocol}://{inf.host}:{inf.port}{inf.health_endpoint}"
     http_passed, http_msg = check_endpoint(health_url)
-    results.append(
+
+    return [
         {
-            "name": "inference_api",
-            "endpoint": health_url,
-            "status": "HEALTHY" if http_passed else f"UNHEALTHY ({http_msg})",
-            "passed": http_passed,
+            "node_id": "node-01 (default)",
+            "ip": inf.host,
+            "hardware": "Configured Inference Node",
+            "active_model": resolved.config.default_model,
+            "tcp_passed": tcp_passed,
+            "tcp_status": "OPEN" if tcp_passed else f"CLOSED ({tcp_msg})",
+            "http_passed": http_passed,
+            "http_status": "OK" if http_passed else f"UNHEALTHY ({http_msg})",
+            "status": "READY" if (tcp_passed and http_passed) else "UNHEALTHY",
+            "passed": tcp_passed and http_passed,
         }
-    )
-
-    return results
+    ]
 
 
-def verify_platform(resolved: ResolvedPlatform) -> dict[str, Any]:
+def verify_platform(
+    resolved: ResolvedPlatform, root_dir: Path | None = None
+) -> dict[str, Any]:
     local_results: list[dict[str, Any]] = []
     for service_name in resolved.dependency_order:
         manifest = resolved.services[service_name]
         local_results.append(verify_service(service_name, manifest))
 
-    remote_results = verify_remote_inference(resolved)
+    remote_results = verify_remote_inference(resolved, root_dir=root_dir)
 
     return {
         "local_services": local_results,
@@ -123,17 +169,24 @@ def format_health_table(results: dict[str, Any] | list[dict[str, Any]]) -> Group
             f"[{status_style}]{r['status']}[/{status_style}]",
         )
 
-    remote_table = Table(title="Remote Inference Node")
-    remote_table.add_column("Check", style="cyan", no_wrap=True)
-    remote_table.add_column("Endpoint", style="blue")
-    remote_table.add_column("Status", style="bold")
+    remote_table = Table(title="Remote Inference Cluster (10.42.0.0/24)")
+    remote_table.add_column("Node ID", style="cyan", no_wrap=True)
+    remote_table.add_column("Reserved IP", style="blue")
+    remote_table.add_column("Hardware / GPU", style="magenta")
+    remote_table.add_column("Active Model", style="yellow")
+    remote_table.add_column("TCP (8080)", style="bold")
+    remote_table.add_column("HTTP Health", style="bold")
 
     for r in remote_results:
-        status_style = "green" if r["passed"] else "yellow"
+        tcp_style = "green" if r.get("tcp_passed") else "yellow"
+        http_style = "green" if r.get("http_passed") else "yellow"
         remote_table.add_row(
-            r["name"],
-            r.get("endpoint", "N/A"),
-            f"[{status_style}]{r['status']}[/{status_style}]",
+            r.get("node_id", "node-XX"),
+            r.get("ip", "10.42.0.X"),
+            r.get("hardware", "N/A"),
+            r.get("active_model", "N/A"),
+            f"[{tcp_style}]{r.get('tcp_status', 'N/A')}[/{tcp_style}]",
+            f"[{http_style}]{r.get('http_status', 'N/A')}[/{http_style}]",
         )
 
     return Group(local_table, remote_table)

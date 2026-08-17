@@ -1,6 +1,16 @@
 name: xynotech-ai-platform
 domain: ai.xynotech.internal
-default_model: qwen2.5-coder
+default_model: qwen3.6-35b-a3b
+
+network:
+  name: ai-platform
+  subnet: 10.42.0.0/24
+  mac_ip: 10.42.0.1
+  node_ip_start: 10.42.0.2
+  node_pool_size: 8
+  dhcp_pool_start: 10.42.0.100
+  dhcp_pool_end: 10.42.0.200
+  probe_image: "docker.io/curlimages/curl@sha256:c3b8bee303c6c6beed656cfc921218c529d65aa61114eb9e27c62047a1271b9b"
 
 inference:
   host: 10.42.0.2
@@ -26,10 +36,6 @@ inference:
     - "-t"
     - "14"
     - "-cnv"
-
-network:
-  name: ai-platform
-  probe_image: "docker.io/curlimages/curl@sha256:c3b8bee303c6c6beed656cfc921218c529d65aa61114eb9e27c62047a1271b9b"
 
 services:
   - postgres

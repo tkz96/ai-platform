@@ -12,8 +12,29 @@ SECRETS_DIR="$PROJECT_ROOT/secrets"
 
 ui_section "Secrets Configuration"
 
-# Create secrets directory
-mkdir -p "$SECRETS_DIR"
+# Create secrets directories
+mkdir -p "$SECRETS_DIR/ssh"
+chmod 700 "$SECRETS_DIR/ssh"
+
+# Ensure cluster orchestrator SSH keypair exists
+if [[ ! -f "$SECRETS_DIR/ssh/cluster_orchestrator_key" ]]; then
+  ssh-keygen -t ed25519 -f "$SECRETS_DIR/ssh/cluster_orchestrator_key" -N "" -C "ai-platform-orchestrator" >/dev/null 2>&1
+  chmod 600 "$SECRETS_DIR/ssh/cluster_orchestrator_key"
+  chmod 644 "$SECRETS_DIR/ssh/cluster_orchestrator_key.pub"
+  ui_success "Cluster Orchestrator SSH keypair generated"
+else
+  ui_success "Cluster Orchestrator SSH keypair already exists"
+fi
+
+# Ensure enrollment session token exists
+if [[ ! -f "$SECRETS_DIR/enrollment_token" ]]; then
+  TOKEN="sk-enroll-$(openssl rand -hex 16 2>/dev/null)"
+  echo "$TOKEN" > "$SECRETS_DIR/enrollment_token"
+  chmod 600 "$SECRETS_DIR/enrollment_token"
+  ui_success "Enrollment session token generated"
+else
+  ui_success "Enrollment session token already exists"
+fi
 
 # ── Helper Functions ────────────────────────────────────────────────────────
 

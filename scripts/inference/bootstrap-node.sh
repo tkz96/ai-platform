@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# AI Platform — Inference Node Bootstrap Script
-# Configures dedicated Linux inference PC networking with static IP (10.42.0.2/24).
+# AI Platform — Manual Inference Node Recovery & Static Network Bootstrap Script
+#
+# NOTICE: In normal operations, Linux inference nodes are enrolled automatically via:
+#   sudo ./node-enroll.sh --token <SESSION_TOKEN>
+# This script is retained strictly as an emergency manual off-grid recovery tool.
 #
 # Usage:
-#   sudo ./bootstrap-node.sh [--interface <iface>] [--enable-nat-gateway] [--force]
-#
-# Safety guarantees:
-#   - Does NOT modify existing Wi-Fi / LAN interfaces, DNS, or default routes.
-#   - Creates an automatic backup of /etc/netplan/ before applying changes.
-#   - Validates Netplan configuration and rolls back immediately if application or ping fails.
+#   sudo ./bootstrap-node.sh [--node-ip <IP>] [--mac-ip <IP>] [--interface <iface>] [--service-file <path>] [--force]
 
 set -euo pipefail
 
@@ -25,6 +23,14 @@ SERVICE_FILE=""
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --node-ip|-n)
+      NODE_IP="$2"
+      shift 2
+      ;;
+    --mac-ip|-m)
+      MAC_MINI_IP="$2"
+      shift 2
+      ;;
     --interface|-i)
       SPECIFIED_IFACE="$2"
       shift 2
@@ -43,7 +49,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: sudo $0 [--interface <iface>] [--service-file <path>] [--enable-nat-gateway] [--force]" >&2
+      echo "Usage: sudo $0 [--node-ip <IP>] [--mac-ip <IP>] [--interface <iface>] [--service-file <path>] [--enable-nat-gateway] [--force]" >&2
       exit 1
       ;;
   esac

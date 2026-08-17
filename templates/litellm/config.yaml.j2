@@ -1,8 +1,22 @@
 model_list:
+{% if healthy_nodes and healthy_nodes | length > 0 %}
+{% for node in healthy_nodes %}
+  - model_name: {{ node.runtime.active_model or (node.desired.models[0].model_name if node.desired.models else platform.default_model) }}
+    litellm_params:
+      model: openai/{{ node.runtime.active_model or (node.desired.models[0].model_name if node.desired.models else platform.default_model) }}
+      api_base: {{ (node.desired.models[0].protocol if node.desired.models else 'http') }}://{{ node.identity.reserved_ip }}:{{ (node.desired.models[0].port if node.desired.models else 8080) }}/v1
+{% endfor %}
+{% elif platform.inference and platform.inference.host %}
   - model_name: {{ platform.default_model }}
     litellm_params:
       model: openai/{{ platform.default_model }}
       api_base: {{ platform.inference.protocol }}://{{ platform.inference.host }}:{{ platform.inference.port }}/v1
+{% else %}
+  - model_name: {{ platform.default_model }}
+    litellm_params:
+      model: openai/{{ platform.default_model }}
+      api_base: http://10.42.0.2:8080/v1
+{% endif %}
 
 general_settings:
   master_key: ${LITELLM_MASTER_KEY}
