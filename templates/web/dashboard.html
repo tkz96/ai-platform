@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}AI Platform — Dashboard{% endblock %}
+
+{% block content %}
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+
+  <!-- Section 1: Control Plane Services -->
+  <section>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+      <div>
+        <h2 style="font-size: 1.25rem; font-weight: 600; color: #ffffff;">Control Plane Services</h2>
+        <p style="font-size: 0.8rem; color: var(--text-muted);">Rootless Podman containers on Mac Mini orchestrator</p>
+      </div>
+
+      <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #06b6d4; display: inline-block;"></span>
+        Live Polling (Every 5s)
+      </div>
+    </div>
+
+    <!-- Live HTMX polling container for Services -->
+    <div 
+      id="services-grid-container" 
+      hx-get="/api/ui/services" 
+      hx-trigger="every 5s, refreshAll from:body" 
+      hx-swap="innerHTML">
+      {% include "partials/services_grid.html" %}
+    </div>
+  </section>
+
+  <!-- Section 2: Remote Inference Cluster Nodes -->
+  <section>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+      <div>
+        <h2 style="font-size: 1.25rem; font-weight: 600; color: #ffffff;">Remote Inference Cluster</h2>
+        <p style="font-size: 0.8rem; color: var(--text-muted);">Dedicated Linux GPU nodes on private Ethernet link (10.42.0.0/24)</p>
+      </div>
+
+      <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+        Live Polling (Every 5s)
+      </div>
+    </div>
+
+    <!-- Live HTMX polling container for Nodes -->
+    <div 
+      id="nodes-grid-container" 
+      hx-get="/api/ui/nodes" 
+      hx-trigger="every 5s, refreshAll from:body" 
+      hx-swap="innerHTML">
+      {% include "partials/nodes_grid.html" %}
+    </div>
+  </section>
+
+  <!-- Section 3: Quick Platform Links & Endpoints -->
+  <section class="glass-card" style="padding: 1.5rem;">
+    <h3 style="font-size: 1rem; font-weight: 600; color: #ffffff; margin-bottom: 1rem;">🚀 Quick Platform Endpoints</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; font-size: 0.85rem;">
+      <a href="http://localhost:4000" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
+        <div style="font-weight: 600; color: #06b6d4;">LiteLLM Proxy</div>
+        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://localhost:4000</div>
+      </a>
+
+      <a href="http://localhost:3000" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
+        <div style="font-weight: 600; color: #6366f1;">Langfuse Observability</div>
+        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://localhost:3000</div>
+      </a>
+
+      <a href="http://localhost:8080" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
+        <div style="font-weight: 600; color: #10b981;">Caddy Gateway</div>
+        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://localhost:8080</div>
+      </a>
+
+      <a href="http://10.42.0.2:8080/health" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
+        <div style="font-weight: 600; color: #38bdf8;">llama-server Health</div>
+        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://10.42.0.2:8080/health</div>
+      </a>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

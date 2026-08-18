@@ -1,0 +1,71 @@
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem;">
+  {% for s in services %}
+  <div class="glass-card" style="padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-weight: 600; font-size: 1rem; color: #ffffff;">{{ s.name }}</span>
+        </div>
+        <div>
+          {% if s.status.startswith('HEALTHY') %}
+            <span class="badge badge-healthy">✓ HEALTHY</span>
+          {% elif s.status.startswith('UNHEALTHY') %}
+            <span class="badge badge-unhealthy">⚠ {{ s.status }}</span>
+          {% else %}
+            <span class="badge badge-stopped">● {{ s.status }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 1rem;">
+        <span>Endpoint: </span>
+        <a href="{{ s.endpoint }}" target="_blank" class="mono" style="color: #38bdf8; text-decoration: none;">{{ s.endpoint }}</a>
+      </div>
+    </div>
+
+    <!-- Actions Toolbar -->
+    <div style="display: flex; align-items: center; gap: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem; flex-wrap: wrap;">
+      <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
+        <input type="hidden" name="action" value="restart">
+        <button type="submit" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">
+          ⚡ Restart
+        </button>
+      </form>
+
+      {% if s.passed %}
+      <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
+        <input type="hidden" name="action" value="stop">
+        <button type="submit" class="btn btn-danger" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">
+          ⏹ Stop
+        </button>
+      </form>
+      {% else %}
+      <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
+        <input type="hidden" name="action" value="launch">
+        <button type="submit" class="btn btn-primary" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">
+          ▶ Launch
+        </button>
+      </form>
+      {% endif %}
+
+      <button 
+        class="btn btn-secondary" 
+        style="font-size: 0.75rem; padding: 0.3rem 0.6rem;"
+        hx-get="/api/ui/services/{{ s.name }}/logs"
+        hx-target="#logs-container"
+        hx-swap="innerHTML">
+        📋 Logs
+      </button>
+
+      <button 
+        class="btn btn-secondary" 
+        style="font-size: 0.75rem; padding: 0.3rem 0.6rem;"
+        hx-get="/api/ui/services/{{ s.name }}/diagnose"
+        hx-target="#modal-container"
+        hx-swap="innerHTML">
+        🔍 Diagnose
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>

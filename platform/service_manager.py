@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
-
 from platform.config import resolve_platform
 from platform.diagnostics import DiagnosticResult
 from platform.probe import probe_http, probe_tcp
 from platform.runner import ComposeRunner
+from typing import Any
 
 ALLOWED_SERVICES = {
     "postgres",

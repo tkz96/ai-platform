@@ -1,4 +1,6 @@
 :80 {
+    reverse_proxy /ui* host.containers.internal:8888
+    reverse_proxy /api/ui* host.containers.internal:8888
     reverse_proxy /v1/* litellm:4000
     reverse_proxy /langfuse/* langfuse:3000
     reverse_proxy * litellm:4000

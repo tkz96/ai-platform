@@ -1,0 +1,83 @@
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.25rem;">
+  {% if not nodes %}
+  <div class="glass-card" style="padding: 2rem; text-align: center; grid-column: 1 / -1;">
+    <div style="color: var(--text-muted); font-size: 0.9rem;">No inference nodes enrolled yet.</div>
+    <div style="font-size: 0.8rem; color: #6b7280; margin-top: 0.5rem;">
+      Run <code class="mono" style="color: #38bdf8;">./bootstrap.sh connect-inference</code> to display enrollment command for fresh Linux PCs.
+    </div>
+  </div>
+  {% else %}
+    {% for n in nodes %}
+    <div class="glass-card" style="padding: 1.25rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+        <div>
+          <span style="font-weight: 700; font-size: 1.05rem; color: #ffffff;">{{ n.identity.id }}</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">({{ n.identity.hostname }})</span>
+        </div>
+        <div>
+          {% if n.runtime.status == 'ready' %}
+            <span class="badge badge-healthy">✓ READY</span>
+          {% elif n.runtime.status == 'offline' %}
+            <span class="badge badge-unhealthy">⚡ OFFLINE</span>
+          {% else %}
+            <span class="badge badge-warning">● {{ n.runtime.status }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Network & Hardware Info -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.825rem; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.2); padding: 0.75rem; border-radius: 8px;">
+        <div>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">Reserved IP</div>
+          <div class="mono" style="color: #38bdf8; font-weight: 500;">{{ n.identity.reserved_ip }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">SSH Target</div>
+          <div class="mono" style="color: #d1d5db;">{{ n.identity.ssh_user }}@{{ n.identity.reserved_ip }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">CPU / RAM</div>
+          <div style="color: #e5e7eb;">{{ n.runtime.hardware.cpu if n.runtime.hardware else 'N/A' }} ({{ n.runtime.hardware.ram_gb if n.runtime.hardware else 0 }} GB)</div>
+        </div>
+        <div>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">Active Model</div>
+          <div class="mono" style="color: #34d399;">{{ n.desired.models[0].model_name if n.desired.models else 'qwen3.6-35b-a3b' }}</div>
+        </div>
+      </div>
+
+      <!-- GPU Specs Bar -->
+      {% if n.runtime.hardware and n.runtime.hardware.gpus %}
+        {% for g in n.runtime.hardware.gpus %}
+        <div style="margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+            <span>🎮 {{ g.name }}</span>
+            <span class="mono">{{ g.vram_gb }} GB VRAM</span>
+          </div>
+          <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden;">
+            <div style="width: 100%; height: 100%; background: linear-gradient(90deg, #06b6d4, #10b981);"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;">
+          💻 CPU Mode (No discrete GPU detected)
+        </div>
+      {% endif %}
+
+      <!-- Footer Actions -->
+      <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
+        <span style="font-size: 0.75rem; color: var(--text-muted);">MAC: <code class="mono">{{ n.identity.mac_address }}</code></span>
+        
+        <button 
+          class="btn btn-secondary" 
+          style="font-size: 0.75rem; padding: 0.3rem 0.6rem;"
+          hx-get="/api/ui/nodes/{{ n.identity.id }}/diagnose"
+          hx-target="#modal-container"
+          hx-swap="innerHTML">
+          🔍 Diagnose Node
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>

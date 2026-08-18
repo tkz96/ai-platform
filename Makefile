@@ -1,4 +1,4 @@
-.PHONY: help render install status verify update backup restore destroy lint format test
+.PHONY: help render install status verify update backup restore destroy ui lint format test
 
 help:
 	@echo "AI Platform Makefile commands:"
@@ -10,6 +10,7 @@ help:
 	@echo "  make backup    - Backup platform database and configuration state"
 	@echo "  make restore   - Restore platform state"
 	@echo "  make destroy   - Stop and remove all containers, networks, and volumes"
+	@echo "  make ui        - Start Control Plane Web UI dashboard server"
 	@echo "  make lint      - Run ruff and yamllint code format checks"
 	@echo "  make format    - Format Python code with ruff"
 	@echo "  make test      - Run automated pytest suite"
@@ -37,6 +38,9 @@ restore:
 
 destroy:
 	uv run python bootstrap.py destroy
+
+ui:
+	uv run uvicorn platform.web.app:app --host 127.0.0.1 --port 8888
 
 lint:
 	uv run ruff check .

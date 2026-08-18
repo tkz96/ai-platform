@@ -1,5 +1,4 @@
-import pytest
-from platform.diagnostics import DiagnosticResult, redact_text, redact_obj
+from platform.diagnostics import DiagnosticResult, redact_text
 
 
 def test_redact_text_secrets():

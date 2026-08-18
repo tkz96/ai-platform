@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
-from platform.service_manager import ServiceManager, ALLOWED_SERVICES
+from platform.service_manager import ALLOWED_SERVICES, ServiceManager
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent
 

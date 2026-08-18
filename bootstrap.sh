@@ -573,6 +573,14 @@ run_connect_inference() {
   bash "$INSTALL_DIR/06a-networking.sh"
 }
 
+# ── Web UI ──────────────────────────────────────────────────────────────────
+
+run_ui() {
+  ui_header "AI Platform Control Plane Web UI"
+  ui_info "Starting Web UI server on http://127.0.0.1:8888..."
+  (cd "$PROJECT_ROOT" && uv run uvicorn platform.web.app:app --host 127.0.0.1 --port 8888)
+}
+
 # ── Destroy ────────────────────────────────────────────────────────────────
 
 run_destroy() {
@@ -626,6 +634,7 @@ main() {
     restore)            run_restore "$@" ;;
     destroy)            run_destroy ;;
     connect-inference)  run_connect_inference ;;
+    ui)                 run_ui ;;
     help|-h|--help)     show_help ;;
     *)
       ui_error "Unknown command: $command"

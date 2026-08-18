@@ -185,8 +185,8 @@ def make_enrollment_server(
     root_dir: Path, host: str = "10.42.0.1", port: int = 8765
 ) -> DualStackServer:
     """Create enrollment HTTP server bound to the specified interface and port."""
-    import time
     import subprocess
+    import time
     handler_cls = type(
         "ConfiguredEnrollmentHandler",
         (EnrollmentRequestHandler,),

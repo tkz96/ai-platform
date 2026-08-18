@@ -1,6 +1,4 @@
-import pytest
 from pathlib import Path
-from platform.nodes import NodeIdentity, NodeRecord, NodeRuntimeState, NodeRegistry
 from platform.provisioner import provision_all_nodes
 
 PROJECT_ROOT = Path(__file__).parent.parent
