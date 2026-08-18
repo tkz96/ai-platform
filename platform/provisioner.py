@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import datetime
-import json
 import subprocess
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from platform.config import ResolvedPlatform, resolve_platform
 from platform.nodes import (
@@ -15,6 +12,7 @@ from platform.nodes import (
     save_registry,
     sync_known_hosts,
 )
+from platform.probe import probe_http, probe_tcp
 from platform.renderer import render_node_service_unit
 from typing import Any
 
@@ -90,48 +88,17 @@ def probe_remote_health(
 ) -> tuple[bool, dict[str, Any] | None, float]:
     """Probe HTTP health endpoint on inference node and record response body.
 
-    Deterministic llama.cpp contract:
-    - HTTP 200 + JSON with status == 'ok' -> healthy/ready
-    - HTTP 503 (model loading) -> not ready
-    - Any other status or non-ok payload -> not ready
+    Delegates to canonical platform.probe engine.
     """
     url = f"http://{ip}:{port}{endpoint}"
-    start_time = time.time()
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AI-Platform-Provisioner/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            latency_ms = (time.time() - start_time) * 1000
-            body = resp.read().decode("utf-8")
-            try:
-                data = json.loads(body)
-            except Exception:
-                return False, {"raw": body}, latency_ms
-
-            if resp.status == 200 and isinstance(data, dict) and data.get("status") == "ok":
-                return True, data, latency_ms
-            return False, data, latency_ms
-    except urllib.error.HTTPError as e:
-        latency_ms = (time.time() - start_time) * 1000
-        try:
-            body = e.read().decode("utf-8")
-            data = json.loads(body)
-            return False, data, latency_ms
-        except Exception:
-            return False, None, latency_ms
-    except Exception:
-        latency_ms = (time.time() - start_time) * 1000
-        return False, None, latency_ms
+    res = probe_http(url, timeout=timeout, require_json_status_ok=True)
+    return res.passed, res.payload, res.latency_ms
 
 
 def check_tcp_port(ip: str, port: int, timeout: int = 3) -> bool:
-    """Check TCP connectivity to target IP and port."""
-    import socket
-
-    try:
-        with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except Exception:
-        return False
+    """Check TCP connectivity to target IP and port using platform.probe."""
+    res = probe_tcp(ip, port, timeout=timeout)
+    return res.passed
 
 
 def provision_single_node(

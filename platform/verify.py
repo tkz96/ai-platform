@@ -1,9 +1,7 @@
-import socket
-import urllib.error
-import urllib.request
 from pathlib import Path
 from platform.config import ResolvedPlatform, ServiceManifest
 from platform.nodes import NodeRecord, load_registry
+from platform.probe import probe_http, probe_inference_node, probe_tcp
 from typing import Any
 
 from rich.console import Group
@@ -11,24 +9,15 @@ from rich.table import Table
 
 
 def check_endpoint(url: str, timeout: int = 5) -> tuple[bool, str]:
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AI-Platform-Verifier/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if 200 <= resp.status < 400:
-                return True, f"HTTP {resp.status}"
-            return False, f"HTTP {resp.status}"
-    except urllib.error.HTTPError as e:
-        return False, f"HTTP {e.code}"
-    except Exception as e:
-        return False, str(e)
+    """Compatibility wrapper around probe_http."""
+    res = probe_http(url, timeout=timeout)
+    return res.passed, res.status
 
 
 def check_tcp_port(host: str, port: int, timeout: int = 5) -> tuple[bool, str]:
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True, "TCP Connection OK"
-    except Exception as e:
-        return False, str(e)
+    """Compatibility wrapper around probe_tcp."""
+    res = probe_tcp(host, port, timeout=timeout)
+    return res.passed, res.status
 
 
 def verify_service(service_name: str, manifest: ServiceManifest) -> dict[str, Any]:
@@ -43,58 +32,26 @@ def verify_service(service_name: str, manifest: ServiceManifest) -> dict[str, An
 
     if manifest.health and manifest.health.endpoint:
         target_url = f"http://localhost:{host_port}{manifest.health.endpoint}"
-        passed, message = check_endpoint(target_url)
+        probe_res = probe_http(target_url)
         return {
             "name": service_name,
             "endpoint": target_url,
-            "status": "HEALTHY" if passed else f"UNHEALTHY ({message})",
-            "passed": passed,
+            "status": "HEALTHY" if probe_res.passed else f"UNHEALTHY ({probe_res.status})",
+            "passed": probe_res.passed,
         }
 
-    passed, message = check_tcp_port("localhost", host_port)
+    probe_res = probe_tcp("localhost", host_port)
     return {
         "name": service_name,
         "endpoint": f"tcp://localhost:{host_port}",
-        "status": "HEALTHY" if passed else f"UNHEALTHY ({message})",
-        "passed": passed,
+        "status": "HEALTHY" if probe_res.passed else f"UNHEALTHY ({probe_res.status})",
+        "passed": probe_res.passed,
     }
 
 
 def verify_node(node: NodeRecord) -> dict[str, Any]:
-    ip = node.identity.reserved_ip
-    model_assign = node.desired.models[0] if node.desired.models else None
-    port = model_assign.port if model_assign else 8080
-    health_endpoint = model_assign.health_endpoint if model_assign else "/health"
-    proto = model_assign.protocol if model_assign else "http"
-    model_name = node.runtime.active_model or (
-        model_assign.model_name if model_assign else "Unknown"
-    )
-
-    tcp_passed, tcp_msg = check_tcp_port(ip, port)
-    health_url = f"{proto}://{ip}:{port}{health_endpoint}"
-    http_passed, http_msg = check_endpoint(health_url)
-
-    # Format hardware summary
-    hw_str = "CPU Mode"
-    if node.runtime.hardware and node.runtime.hardware.gpus:
-        gpus = node.runtime.hardware.gpus
-        gpu_summary = ", ".join(f"{g.name} ({g.vram_gb}GB)" for g in gpus)
-        hw_str = f"{gpu_summary} ({node.runtime.hardware.ram_gb}GB RAM)"
-    elif node.runtime.hardware:
-        hw_str = f"{node.runtime.hardware.cpu} ({node.runtime.hardware.ram_gb}GB RAM)"
-
-    return {
-        "node_id": node.identity.id,
-        "ip": ip,
-        "hardware": hw_str,
-        "active_model": model_name,
-        "tcp_passed": tcp_passed,
-        "tcp_status": "OPEN" if tcp_passed else f"CLOSED ({tcp_msg})",
-        "http_passed": http_passed,
-        "http_status": "OK" if http_passed else f"UNHEALTHY ({http_msg})",
-        "status": "READY" if (tcp_passed and http_passed) else "UNHEALTHY",
-        "passed": tcp_passed and http_passed,
-    }
+    """Execute standard health checks for a registered inference node."""
+    return probe_inference_node(node)
 
 
 def verify_remote_inference(

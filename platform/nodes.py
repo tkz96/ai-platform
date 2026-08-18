@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import os
+import signal
 from pathlib import Path
 from typing import Any, Literal
 
@@ -298,3 +300,70 @@ def get_healthy_serving_nodes(registry: NodeRegistry) -> list[NodeRecord]:
         ):
             healthy.append(node)
     return healthy
+
+
+class NodeRegistryManager:
+    """Manages the full lifecycle of the node registry and its associated infrastructure files:
+
+    state/nodes.yaml, state/dnsmasq.hosts, and state/known_hosts.
+    """
+
+    def __init__(self, root_dir: Path) -> None:
+        self.root_dir = root_dir
+        self.state_dir = root_dir / "state"
+
+    def load(self) -> NodeRegistry:
+        return load_registry(self.root_dir)
+
+    def save(self, registry: NodeRegistry) -> Path:
+        return save_registry(self.root_dir, registry)
+
+    def sync_infrastructure(self, registry: NodeRegistry) -> None:
+        """Atomically update state/dnsmasq.hosts, state/known_hosts, and signal dnsmasq."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        # 1. Update dnsmasq.hosts
+        hosts_file = self.state_dir / "dnsmasq.hosts"
+        hosts_tmp = self.state_dir / "dnsmasq.hosts.tmp"
+        hosts_content = generate_dnsmasq_hosts(registry)
+        hosts_tmp.write_text(hosts_content)
+        hosts_tmp.replace(hosts_file)
+
+        # 2. Signal dnsmasq SIGHUP
+        pid_file = self.state_dir / "dnsmasq.pid"
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, signal.SIGHUP)
+            except Exception:
+                pass
+
+        # 3. Update known_hosts
+        sync_known_hosts(self.root_dir, registry)
+
+    def enroll_node(
+        self,
+        hostname: str,
+        mac_address: str,
+        ssh_user: str,
+        ssh_host_key: str,
+        current_ip: str | None = None,
+        hardware: HardwareSpecs | None = None,
+        replace_node_id: str | None = None,
+    ) -> tuple[NodeRecord, bool]:
+        """Atomically register/update node, save registry, sync dnsmasq/known_hosts,
+        and notify DHCP daemon.
+        """
+        registry = self.load()
+        node, is_new = register_or_update_node(
+            registry=registry,
+            hostname=hostname,
+            mac_address=mac_address,
+            ssh_user=ssh_user,
+            ssh_host_key=ssh_host_key,
+            current_ip=current_ip,
+            hardware=hardware,
+            replace_node_id=replace_node_id,
+        )
+        self.save(registry)
+        self.sync_infrastructure(registry)
+        return node, is_new

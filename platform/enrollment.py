@@ -10,11 +10,7 @@ from pathlib import Path
 from platform.nodes import (
     GPUInfo,
     HardwareSpecs,
-    generate_dnsmasq_hosts,
-    load_registry,
-    register_or_update_node,
-    save_registry,
-    sync_known_hosts,
+    NodeRegistryManager,
 )
 from typing import Any
 
@@ -79,7 +75,7 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
                     404, {"status": "error", "error": "node-enroll.sh script not found"}
                 )
         elif path == "/api/enroll/status":
-            registry = load_registry(self.root_dir)
+            registry = NodeRegistryManager(self.root_dir).load()
             self._send_json(200, {"status": "ok", "enrolled_count": len(registry.nodes)})
         else:
             self._send_json(404, {"status": "error", "error": f"Endpoint not found: {path}"})
@@ -140,10 +136,9 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
                     gpus=gpus,
                 )
 
-            # Register node
-            registry = load_registry(self.root_dir)
-            node_record, is_new = register_or_update_node(
-                registry=registry,
+            # Register node and synchronize infrastructure
+            manager = NodeRegistryManager(self.root_dir)
+            node_record, is_new = manager.enroll_node(
                 hostname=hostname,
                 mac_address=mac_address,
                 ssh_user=ssh_user,
@@ -152,15 +147,6 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
                 hardware=hw_specs,
                 replace_node_id=replace_node_id,
             )
-            save_registry(self.root_dir, registry)
-
-            # Synchronize state/dnsmasq.hosts and state/known_hosts
-            hosts_file = self.root_dir / "state" / "dnsmasq.hosts"
-            hosts_content = generate_dnsmasq_hosts(registry)
-            hosts_file.write_text(hosts_content)
-            notify_dnsmasq_reload(self.root_dir)
-
-            sync_known_hosts(self.root_dir, registry)
 
             # Return success response with cluster public key
             cluster_pub_key = get_cluster_public_key(self.root_dir)

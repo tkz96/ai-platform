@@ -1,9 +1,7 @@
 import json
 import sys
 from pathlib import Path
-from platform.config import resolve_platform
-from platform.renderer import render_all
-from platform.runner import ComposeRunner
+from platform.lifecycle import PlatformLifecycle
 from platform.verify import format_health_table, verify_platform
 
 import typer
@@ -29,15 +27,17 @@ def render(
     console.print(f"[bold blue]Resolving platform configuration from {target_root}...[/bold blue]")
 
     try:
-        resolved = resolve_platform(target_root)
-        console.print("[bold green]✓ Configuration validated successfully.[/bold green]")
-
+        lifecycle = PlatformLifecycle(target_root)
         if dry_run:
+            from platform.config import resolve_platform
+
+            resolve_platform(target_root)
+            console.print("[bold green]✓ Configuration validated successfully.[/bold green]")
             console.print("[bold yellow]Dry run: skipping file generation.[/bold yellow]")
             return
 
-        rendered_files = render_all(target_root, resolved)
-        console.print("[bold green]✓ Generated files:[/bold green]")
+        _, rendered_files = lifecycle.render()
+        console.print("[bold green]✓ Configuration validated and files generated:[/bold green]")
         for f in rendered_files:
             rel = f.relative_to(target_root) if f.is_relative_to(target_root) else f
             console.print(f"  - [cyan]{rel}[/cyan]")
@@ -52,12 +52,13 @@ def install(
 ) -> None:
     """Render configuration and launch all platform services."""
     target_root = root or ROOT_DIR
-    render(root=target_root)
-
-    runner = ComposeRunner()
-    console.print("[bold blue]Starting platform services...[/bold blue]")
+    console.print("[bold blue]Deploying platform services...[/bold blue]")
     try:
-        runner.up(target_root)
+        lifecycle = PlatformLifecycle(target_root)
+        rendered_files = lifecycle.deploy()
+        for f in rendered_files:
+            rel = f.relative_to(target_root) if f.is_relative_to(target_root) else f
+            console.print(f"  - Rendered: [cyan]{rel}[/cyan]")
         console.print("[bold green]✓ Platform services deployed successfully.[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Deployment failed:[/bold red] {e}")
@@ -73,6 +74,8 @@ def status(
     target_root = root or ROOT_DIR
     if not json_output:
         console.print("[bold blue]Validating configuration...[/bold blue]")
+    from platform.config import resolve_platform
+
     resolved = resolve_platform(target_root)
     if not json_output:
         console.print("[bold green]✓ Configuration valid.[/bold green]")
@@ -100,15 +103,14 @@ def update(
 ) -> None:
     """Pull latest container images and redeploy services."""
     target_root = root or ROOT_DIR
-    render(root=target_root)
-
-    runner = ComposeRunner()
-    console.print("[bold blue]Pulling container images...[/bold blue]")
-    runner.pull(target_root)
-
-    console.print("[bold blue]Redeploying services...[/bold blue]")
-    runner.up(target_root)
-    console.print("[bold green]✓ Update complete.[/bold green]")
+    console.print("[bold blue]Pulling images and updating services...[/bold blue]")
+    try:
+        lifecycle = PlatformLifecycle(target_root)
+        lifecycle.update()
+        console.print("[bold green]✓ Update complete.[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Update failed:[/bold red] {e}")
+        sys.exit(1)
 
 
 @app.command()
@@ -116,39 +118,23 @@ def backup(
     dest: Path | None = typer.Option(None, "--dest", "-d", help="Backup destination directory"),
 ) -> None:
     """Backup platform database and configuration state."""
-    import tarfile
-    from datetime import datetime
-
-    target_dest = dest or (ROOT_DIR / "backups")
-    target_dest.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    archive_name = f"backup_{timestamp}.tar.gz"
-    archive_path = target_dest / archive_name
-
-    console.print(f"[bold blue]Backing up platform state to {archive_path}...[/bold blue]")
-
-    with tarfile.open(archive_path, "w:gz") as tar:
-        for file_name in ["platform.yaml", "versions.yaml", "compose.yaml"]:
-            p = ROOT_DIR / file_name
-            if p.exists():
-                tar.add(p, arcname=file_name)
-        configs_dir = ROOT_DIR / "configs"
-        if configs_dir.exists():
-            tar.add(configs_dir, arcname="configs")
-
-    # Attempt PostgreSQL database dump if container is running
-    runner = ComposeRunner()
+    lifecycle = PlatformLifecycle(ROOT_DIR)
+    console.print("[bold blue]Backing up platform state...[/bold blue]")
     try:
-        dump_path = target_dest / f"postgres_{timestamp}.sql"
-        with open(dump_path, "w") as f:
-            runner.exec(ROOT_DIR, "postgres", ["pg_dumpall", "-U", "postgres"], stdout=f)
-        console.print(f"[bold green]✓ Database dump saved to {dump_path}[/bold green]")
-    except Exception:
-        console.print(
-            "[yellow]Notice: Postgres container not running; backup includes configs only.[/yellow]"
-        )
-
-    console.print(f"[bold green]✓ Backup process completed: {archive_path}[/bold green]")
+        archive_path, sql_dump = lifecycle.create_backup(dest_dir=dest)
+        console.print(f"[bold green]✓ Configuration archive saved to {archive_path}[/bold green]")
+        if sql_dump and sql_dump.exists():
+            console.print(f"[bold green]✓ Database dump saved to {sql_dump}[/bold green]")
+        else:
+            notice = (
+                "[yellow]Notice: Database container not running; "
+                "backup includes configs only.[/yellow]"
+            )
+            console.print(notice)
+        console.print(f"[bold green]✓ Backup process completed: {archive_path}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Backup failed:[/bold red] {e}")
+        sys.exit(1)
 
 
 @app.command()
@@ -156,30 +142,16 @@ def restore(
     src: Path = typer.Option(..., "--src", "-s", help="Backup source archive or directory"),
 ) -> None:
     """Restore platform database and configuration state."""
-    import tarfile
-
-    if not src.exists():
-        console.print(f"[bold red]Backup source not found at {src}[/bold red]")
-        sys.exit(1)
-
+    lifecycle = PlatformLifecycle(ROOT_DIR)
     console.print(f"[bold blue]Restoring platform state from {src}...[/bold blue]")
-
-    if src.is_file() and str(src).endswith((".tar.gz", ".tgz", ".tar")):
-        with tarfile.open(src, "r:*") as tar:
-            tar.extractall(path=ROOT_DIR)
-        console.print("[bold green]✓ Configuration archives restored successfully.[/bold green]")
-    elif src.is_dir():
-        runner = ComposeRunner()
-        for item in src.glob("*"):
-            if item.name.endswith(".sql"):
-                with open(item) as f:
-                    runner.exec(ROOT_DIR, "postgres", ["psql", "-U", "postgres"], stdin=f)
-                console.print(f"[bold green]✓ Restored SQL dump {item.name}[/bold green]")
-    else:
-        console.print(f"[bold red]Unsupported backup source format: {src}[/bold red]")
+    try:
+        restored = lifecycle.restore_backup(src)
+        for item in restored:
+            console.print(f"[bold green]✓ Restored {item}[/bold green]")
+        console.print("[bold green]✓ Restore process completed.[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Restore failed:[/bold red] {e}")
         sys.exit(1)
-
-    console.print("[bold green]✓ Restore process completed.[/bold green]")
 
 
 @app.command()
@@ -188,11 +160,10 @@ def destroy(
 ) -> None:
     """Stop and remove all containers, networks, and volumes."""
     target_root = root or ROOT_DIR
-    runner = ComposeRunner()
-
     console.print("[bold red]Destroying platform services and volumes...[/bold red]")
     try:
-        runner.down(target_root, volumes=True)
+        lifecycle = PlatformLifecycle(target_root)
+        lifecycle.teardown(volumes=True)
         console.print("[bold green]✓ Platform destroyed successfully.[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Destroy failed:[/bold red] {e}")

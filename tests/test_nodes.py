@@ -349,3 +349,35 @@ def test_enrollment_server_http_flow(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_node_registry_manager_direct(tmp_path: Path) -> None:
+    from platform.nodes import NodeRegistryManager
+
+    manager = NodeRegistryManager(tmp_path)
+    # Empty load
+    reg = manager.load()
+    assert len(reg.nodes) == 0
+
+    # Enroll node
+    record, is_new = manager.enroll_node(
+        hostname="rig-01",
+        mac_address="00:11:22:33:44:55",
+        ssh_user="ubuntu",
+        ssh_host_key="ssh-ed25519 HOSTKEY1",
+        current_ip="10.42.0.150",
+    )
+    assert is_new is True
+    assert record.identity.id == "node-01"
+    assert record.identity.reserved_ip == "10.42.0.2"
+
+    # Verify atomic files on disk
+    assert (tmp_path / "state" / "nodes.yaml").exists()
+    assert (tmp_path / "state" / "dnsmasq.hosts").exists()
+    assert (tmp_path / "state" / "known_hosts").exists()
+
+    dnsmasq_content = (tmp_path / "state" / "dnsmasq.hosts").read_text()
+    assert "00:11:22:33:44:55,10.42.0.2,node-01,infinite" in dnsmasq_content
+
+    known_hosts_content = (tmp_path / "state" / "known_hosts").read_text()
+    assert "10.42.0.2,node-01,10.42.0.150 ssh-ed25519 HOSTKEY1" in known_hosts_content
