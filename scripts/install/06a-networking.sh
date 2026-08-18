@@ -222,22 +222,29 @@ ui_success "Fresh bootstrap session token generated"
 ui_section "Stage 5 — Linux Node One-Time Enrollment"
 
 ENROLL_SERVER_PID=""
-ENROLLMENT_SKIPPED=false
-
-cleanup_enroll_server() {
+stop_enrollment_server_process() {
   if [[ -n "$ENROLL_SERVER_PID" ]] && ps -p "$ENROLL_SERVER_PID" >/dev/null 2>&1; then
     kill "$ENROLL_SERVER_PID" 2>/dev/null || true
     wait "$ENROLL_SERVER_PID" 2>/dev/null || true
   fi
+  ENROLL_SERVER_PID=""
+}
+
+cleanup_enroll_server() {
+  stop_enrollment_server_process
   rm -f "$TOKEN_FILE"
 }
 trap cleanup_enroll_server EXIT INT TERM
 
 start_enrollment_server_process() {
-  cleanup_enroll_server
-  ENROLL_SERVER_PID=""
+  stop_enrollment_server_process
+  mkdir -p "$SECRETS_DIR" "$STATE_DIR" 2>/dev/null || true
+  echo "$SESSION_TOKEN" > "$TOKEN_FILE"
+  echo "$SESSION_TOKEN" > "$STATE_DIR/enrollment_token"
+  chmod 600 "$TOKEN_FILE" "$STATE_DIR/enrollment_token" 2>/dev/null || true
   (
     cd "$PROJECT_ROOT"
+    export SESSION_TOKEN="$SESSION_TOKEN"
     uv run python3 -c "
 import sys
 from pathlib import Path

@@ -16,11 +16,13 @@ from typing import Any
 
 
 def get_session_token(root_dir: Path) -> str:
-    """Read the active session token from secrets/enrollment_token."""
-    token_file = root_dir / "secrets" / "enrollment_token"
-    if token_file.exists():
-        return token_file.read_text().strip()
-    return ""
+    """Read the active session token from secrets/enrollment_token or environment."""
+    for path in [root_dir / "secrets" / "enrollment_token", root_dir / "state" / "enrollment_token"]:
+        if path.exists():
+            val = path.read_text().strip()
+            if val:
+                return val
+    return os.environ.get("SESSION_TOKEN", "").strip()
 
 
 def get_cluster_public_key(root_dir: Path) -> str:
@@ -33,13 +35,13 @@ def get_cluster_public_key(root_dir: Path) -> str:
 
 def notify_dnsmasq_reload(root_dir: Path) -> None:
     """Signal dnsmasq to reload dhcp-hostsfile (state/dnsmasq.hosts)."""
-    pid_file = root_dir / "state" / "dnsmasq.pid"
-    if pid_file.exists():
-        try:
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, signal.SIGHUP)
-        except Exception:
-            pass
+    for pid_path in [Path("/tmp/ai-platform-dnsmasq.pid"), root_dir / "state" / "dnsmasq.pid"]:
+        if pid_path.exists():
+            try:
+                pid = int(pid_path.read_text().strip())
+                os.kill(pid, signal.SIGHUP)
+            except Exception:
+                pass
 
 
 class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -96,8 +98,8 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             # Constant-time token verification
-            received_token = str(data.get("token", ""))
-            expected_token = get_session_token(self.root_dir)
+            received_token = str(data.get("token", "")).strip()
+            expected_token = get_session_token(self.root_dir).strip()
             if not expected_token or not hmac.compare_digest(received_token, expected_token):
                 self._send_json(
                     403, {"status": "error", "error": "Invalid or expired session token"}
@@ -118,27 +120,26 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
             # Parse hardware specs if provided
             hw_dict = data.get("hardware", {})
             hw_specs = None
-            if hw_dict and isinstance(hw_dict, dict):
-                gpus: list[GPUInfo] = []
-                for g in hw_dict.get("gpus", []):
-                    if isinstance(g, dict) and "name" in g:
-                        gpus.append(
-                            GPUInfo(
-                                name=str(g.get("name", "")),
-                                vram_gb=int(g.get("vram_gb", 0)),
-                                driver_version=g.get("driver_version"),
-                                count=int(g.get("count", 1)),
-                            )
-                        )
+            if hw_dict:
+                gpus = [
+                    GPUInfo(
+                        name=g.get("name", "Unknown GPU"),
+                        vram_gb=int(g.get("vram_gb", 0)),
+                        count=int(g.get("count", 1)),
+                        driver_version=g.get("driver_version"),
+                        cuda_version=g.get("cuda_version"),
+                    )
+                    for g in hw_dict.get("gpus", [])
+                ]
                 hw_specs = HardwareSpecs(
-                    cpu=str(hw_dict.get("cpu", "Generic CPU")),
+                    cpu=hw_dict.get("cpu", "Unknown CPU"),
                     ram_gb=int(hw_dict.get("ram_gb", 0)),
                     gpus=gpus,
                 )
 
-            # Register node and synchronize infrastructure
-            manager = NodeRegistryManager(self.root_dir)
-            node_record, is_new = manager.enroll_node(
+            # Register node
+            mgr = NodeRegistryManager(self.root_dir)
+            rec, is_new = mgr.enroll_node(
                 hostname=hostname,
                 mac_address=mac_address,
                 ssh_user=ssh_user,
@@ -148,14 +149,17 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
                 replace_node_id=replace_node_id,
             )
 
-            # Return success response with cluster public key
+            # Reload dnsmasq static leases
+            notify_dnsmasq_reload(self.root_dir)
+
+            # Return success response
             cluster_pub_key = get_cluster_public_key(self.root_dir)
             self._send_json(
                 200,
                 {
                     "status": "ok",
-                    "node_id": node_record.identity.id,
-                    "reserved_ip": node_record.identity.reserved_ip,
+                    "node_id": rec.identity.id,
+                    "reserved_ip": rec.identity.reserved_ip,
                     "cluster_public_key": cluster_pub_key,
                 },
             )
@@ -165,6 +169,16 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
 
 class DualStackServer(http.server.ThreadingHTTPServer):
     allow_reuse_address = True
+
+    def server_bind(self) -> None:
+        import socket
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except OSError:
+                pass
+        super().server_bind()
 
 
 def make_enrollment_server(
