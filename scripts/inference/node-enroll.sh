@@ -13,6 +13,7 @@
 #   6. Transmit enrollment payload to Mac enrollment listener
 #   7. Authorize Mac cluster public key in non-root user's ~/.ssh/authorized_keys
 #   8. Request DHCP lease renewal to acquire reserved permanent IP
+#   9. Strictly verify reserved IP acquisition on physical interface
 
 set -euo pipefail
 
@@ -87,8 +88,8 @@ elif command -v wget >/dev/null 2>&1; then
 else
   echo
   echo "❌ ERROR: Missing required HTTP client (neither 'curl' nor 'wget' was found)." >&2
-  echo "   Please install an HTTP client or download via:" >&2
-  echo "     sudo apt-get install -y wget" >&2
+  echo "   Please install an HTTP client from Ubuntu installation media or copy via USB:" >&2
+  echo "     sudo apt-get install -y wget  (or curl)" >&2
   echo
   exit 1
 fi
@@ -306,27 +307,73 @@ echo "✓ SSH management channel authorized"
 # ── 9. Trigger DHCP Renewal for Reserved IP ──────────────────────────────────
 echo "→ Refreshing DHCP lease to apply reserved IP ($RESERVED_IP)..."
 
-if command -v dhclient >/dev/null 2>&1; then
+CONN_UUID=$(nmcli -t -f UUID,DEVICE connection show --active 2>/dev/null | awk -F: -v d="$DETECTED_DEV" '$2==d{print $1; exit}')
+if [[ -n "$CONN_UUID" ]]; then
+  IPV4_METHOD=$(nmcli -t -f ipv4.method connection show uuid "$CONN_UUID" 2>/dev/null | cut -d: -f2)
+  if [[ "$IPV4_METHOD" == "auto" ]]; then
+    echo "  Reapplying NetworkManager connection ($CONN_UUID)..."
+    nmcli connection up uuid "$CONN_UUID" 2>/dev/null || true
+  else
+    echo "⚠️  Warning: Active connection on $DETECTED_DEV uses IPv4 method '$IPV4_METHOD', not DHCP ('auto')."
+    echo "   DHCP renewal may not produce a reserved IP. Consider switching to DHCP."
+  fi
+elif command -v dhclient >/dev/null 2>&1; then
+  echo "  Refreshing DHCP lease via dhclient on $DETECTED_DEV..."
   dhclient -r "$DETECTED_DEV" 2>/dev/null || true
   dhclient "$DETECTED_DEV" 2>/dev/null || true
-elif command -v nmcli >/dev/null 2>&1; then
-  nmcli device reapply "$DETECTED_DEV" 2>/dev/null || true
 elif systemctl is-active --quiet systemd-networkd; then
+  echo "  Restarting systemd-networkd..."
   systemctl restart systemd-networkd 2>/dev/null || true
 fi
 
-# ── 10. Completion Banner ───────────────────────────────────────────────────
-echo
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  AI Platform — Node Enrollment Complete!"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Node ID          : ${ASSIGNED_NODE_ID}"
-echo "  DHCP-Reserved IP : ${RESERVED_IP}"
-echo "  Interface        : ${DETECTED_DEV} (${MAC_ADDR})"
-echo "  SSH User         : ${TARGET_USER}"
-echo "  Orchestrator     : ${ORCHESTRATOR_IP}"
-echo
-echo "  No further manual configuration required on this machine."
-echo "  The Mac Mini orchestrator will now remotely manage this node."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo
+# ── 10. Verify Reserved IP Acquisition ───────────────────────────────────────
+echo "→ Verifying reserved IP ($RESERVED_IP) on $DETECTED_DEV..."
+
+IP_ACQUIRED=false
+for _ in {1..15}; do
+  ACTIVE_IPS=$(ip -4 -o addr show dev "$DETECTED_DEV" 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
+  if echo "$ACTIVE_IPS" | grep -qw "$RESERVED_IP"; then
+    IP_ACQUIRED=true
+    break
+  fi
+  sleep 1
+done
+
+CURRENT_ACTIVE_IP=$(ip -4 -o addr show dev "$DETECTED_DEV" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1 || echo "unknown")
+
+if [[ "$IP_ACQUIRED" == "true" ]]; then
+  echo
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  AI Platform — Node Enrollment Complete!"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Node ID          : ${ASSIGNED_NODE_ID}"
+  echo "  DHCP-Reserved IP : ${RESERVED_IP} (VERIFIED ACTIVE)"
+  echo "  Interface        : ${DETECTED_DEV} (${MAC_ADDR})"
+  echo "  SSH User         : ${TARGET_USER}"
+  echo "  Orchestrator     : ${ORCHESTRATOR_IP}"
+  echo
+  echo "  No further manual configuration required on this machine."
+  echo "  The Mac Mini orchestrator will now remotely manage this node."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo
+  exit 0
+else
+  echo
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  AI Platform — Enrollment Incomplete (Pending Reserved IP)"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Node ID          : ${ASSIGNED_NODE_ID}"
+  echo "  Assigned IP      : ${RESERVED_IP}"
+  echo "  Current IP       : ${CURRENT_ACTIVE_IP} (NOT RESERVED IP)"
+  echo "  Status           : enrolled_pending_ip"
+  echo
+  echo "  The node registered with orchestrator, but has not yet"
+  echo "  acquired its reserved IP (${RESERVED_IP}) via DHCP."
+  echo
+  echo "  Please run:"
+  echo "    sudo dhclient -r && sudo dhclient ${DETECTED_DEV}"
+  echo "  or reboot this machine to complete the network transition."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo
+  exit 1
+fi

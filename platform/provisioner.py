@@ -7,18 +7,16 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
-
+from platform.config import ResolvedPlatform, resolve_platform
 from platform.nodes import (
-    GPUInfo,
-    HardwareSpecs,
     ModelAssignment,
     NodeRecord,
-    NodeRegistry,
     load_registry,
     save_registry,
     sync_known_hosts,
 )
+from platform.renderer import render_node_service_unit
+from typing import Any
 
 
 class SSHRunner:
@@ -87,53 +85,38 @@ class SSHRunner:
         subprocess.run(scp_cmd, capture_output=True, text=True, check=True, timeout=30)
 
 
-def render_systemd_unit(node: NodeRecord, model: ModelAssignment) -> str:
-    """Generate systemd service content for llama-server."""
-    user = node.identity.ssh_user
-    workdir = f"/home/{user}" if user != "root" else "/root"
-    extra_flags = " ".join(model.extra_args)
-
-    content = f"""[Unit]
-Description=AI Platform llama.cpp Inference Server ({node.identity.id})
-After=network.target network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User={user}
-WorkingDirectory={workdir}
-ExecStart={model.model_path and '/usr/local/bin/llama-server' or '/usr/local/bin/llama-server'} \\
-    --host {node.identity.reserved_ip} \\
-    --port {model.port} \\
-    --model {model.model_path} \\
-    {extra_flags}
-Restart=always
-RestartSec=3
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-"""
-    return content
-
-
 def probe_remote_health(
     ip: str, port: int, endpoint: str = "/health", timeout: int = 4
 ) -> tuple[bool, dict[str, Any] | None, float]:
-    """Probe HTTP health endpoint on inference node and record response body."""
+    """Probe HTTP health endpoint on inference node and record response body.
+
+    Deterministic llama.cpp contract:
+    - HTTP 200 + JSON with status == 'ok' -> healthy/ready
+    - HTTP 503 (model loading) -> not ready
+    - Any other status or non-ok payload -> not ready
+    """
     url = f"http://{ip}:{port}{endpoint}"
     start_time = time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "AI-Platform-Provisioner/1.0"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             latency_ms = (time.time() - start_time) * 1000
-            if 200 <= resp.status < 400:
-                body = resp.read().decode("utf-8")
-                try:
-                    data = json.loads(body)
-                    return True, data, latency_ms
-                except Exception:
-                    return True, {"raw": body}, latency_ms
+            body = resp.read().decode("utf-8")
+            try:
+                data = json.loads(body)
+            except Exception:
+                return False, {"raw": body}, latency_ms
+
+            if resp.status == 200 and isinstance(data, dict) and data.get("status") == "ok":
+                return True, data, latency_ms
+            return False, data, latency_ms
+    except urllib.error.HTTPError as e:
+        latency_ms = (time.time() - start_time) * 1000
+        try:
+            body = e.read().decode("utf-8")
+            data = json.loads(body)
+            return False, data, latency_ms
+        except Exception:
             return False, None, latency_ms
     except Exception:
         latency_ms = (time.time() - start_time) * 1000
@@ -151,12 +134,25 @@ def check_tcp_port(ip: str, port: int, timeout: int = 3) -> bool:
         return False
 
 
-def provision_single_node(root_dir: Path, node: NodeRecord) -> dict[str, Any]:
+def provision_single_node(
+    root_dir: Path,
+    node: NodeRecord,
+    resolved: ResolvedPlatform | None = None,
+) -> dict[str, Any]:
     """Remotely provision a single Linux inference node over SSH with strict verification."""
+    if resolved is None:
+        resolved = resolve_platform(root_dir)
+
     ssh = SSHRunner(root_dir)
     target_ip = node.identity.reserved_ip
     user = node.identity.ssh_user
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+
+    service_user = node.identity.ssh_user or resolved.config.inference.service_user
+    working_dir = resolved.config.inference.working_directory
+    binary_path = resolved.config.inference.binary_path
+    model = node.desired.models[0] if node.desired.models else ModelAssignment()
+    model_path = model.model_path
 
     results: dict[str, Any] = {
         "node_id": node.identity.id,
@@ -169,11 +165,10 @@ def provision_single_node(root_dir: Path, node: NodeRecord) -> dict[str, Any]:
         # Step 1: Check SSH reachability
         node.runtime.status = "provisioning"
         res = ssh.run_cmd(target_ip, user, "uname -a", check=False)
-        if res.returncode != 0:
+        if res.returncode != 0 and node.runtime.current_ip and node.runtime.current_ip != target_ip:
             # Fallback to current_ip if node has not acquired reserved IP yet
-            if node.runtime.current_ip and node.runtime.current_ip != target_ip:
-                target_ip = node.runtime.current_ip
-                res = ssh.run_cmd(target_ip, user, "uname -a", check=False)
+            target_ip = node.runtime.current_ip
+            res = ssh.run_cmd(target_ip, user, "uname -a", check=False)
 
         if res.returncode != 0:
             node.runtime.status = "offline"
@@ -184,15 +179,72 @@ def provision_single_node(root_dir: Path, node: NodeRecord) -> dict[str, Any]:
         results["steps"]["ssh"] = "ok"
 
         # Step 2: Hardware inspection
-        hw_cmd = "lscpu | grep 'Model name' || true; free -b | grep Mem || true; command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader,nounits || true"
-        hw_res = ssh.run_cmd(target_ip, user, hw_cmd, check=False)
+        hw_cmd = (
+            "lscpu | grep 'Model name' || true; "
+            "free -b | grep Mem || true; "
+            "command -v nvidia-smi >/dev/null && "
+            "nvidia-smi --query-gpu=name,memory.total,driver_version "
+            "--format=csv,noheader,nounits || true"
+        )
+        ssh.run_cmd(target_ip, user, hw_cmd, check=False)
         results["steps"]["hardware_inspection"] = "ok"
 
-        # Step 3: Render and upload systemd unit
-        model = (
-            node.desired.models[0] if node.desired.models else ModelAssignment()
+        # Step 3: Verify Prerequisites (Binary, Service User, Working Directory, Permissions)
+        binary_check = ssh.run_cmd(target_ip, user, f"test -x '{binary_path}'", check=False)
+        user_check = ssh.run_cmd(target_ip, user, f"id '{service_user}'", check=False)
+        dir_check = ssh.run_cmd(
+            target_ip, user, f"sudo -u '{service_user}' test -d '{working_dir}'", check=False
         )
-        service_content = render_systemd_unit(node, model)
+        bin_perm_check = ssh.run_cmd(
+            target_ip, user, f"sudo -u '{service_user}' test -x '{binary_path}'", check=False
+        )
+
+        prereq_errors: list[str] = []
+        if binary_check.returncode != 0:
+            prereq_errors.append(f"binary not executable or missing at {binary_path}")
+        if user_check.returncode != 0:
+            prereq_errors.append(f"service user '{service_user}' does not exist")
+        if dir_check.returncode != 0:
+            prereq_errors.append(
+                f"working directory '{working_dir}' inaccessible by '{service_user}'"
+            )
+        if bin_perm_check.returncode != 0 and binary_check.returncode == 0:
+            prereq_errors.append(f"binary '{binary_path}' not executable by '{service_user}'")
+
+        if prereq_errors:
+            node.runtime.status = "prerequisites_missing"
+            node.runtime.last_error = f"Prerequisites missing: {', '.join(prereq_errors)}"
+            results["steps"]["prerequisites"] = "failed"
+            results["steps"]["service_start"] = "prerequisites_missing"
+            results["success"] = False
+            return results
+
+        results["steps"]["prerequisites"] = "ok"
+
+        # Step 4: Verify Model Presence & Readability
+        model_exists = ssh.run_cmd(target_ip, user, f"test -f '{model_path}'", check=False)
+        model_readable = ssh.run_cmd(
+            target_ip, user, f"sudo -u '{service_user}' test -r '{model_path}'", check=False
+        )
+
+        model_errors: list[str] = []
+        if model_exists.returncode != 0:
+            model_errors.append(f"model file missing at {model_path}")
+        elif model_readable.returncode != 0:
+            model_errors.append(f"model file at {model_path} not readable by '{service_user}'")
+
+        if model_errors:
+            node.runtime.status = "model_missing"
+            node.runtime.last_error = f"Model missing: {', '.join(model_errors)}"
+            results["steps"]["model"] = "failed"
+            results["steps"]["service_start"] = "model_missing"
+            results["success"] = False
+            return results
+
+        results["steps"]["model"] = "ok"
+
+        # Step 5: Render and upload systemd unit via authoritative Jinja2 template
+        service_content = render_node_service_unit(root_dir, resolved, node)
 
         tmp_service_file = root_dir / "state" / f"llama-server-{node.identity.id}.service"
         tmp_service_file.write_text(service_content)
@@ -201,49 +253,26 @@ def provision_single_node(root_dir: Path, node: NodeRecord) -> dict[str, Any]:
         ssh.scp_file(tmp_service_file, remote_tmp, target_ip, user)
 
         # Install unit file with sudo
-        install_cmd = f"sudo cp {remote_tmp} /etc/systemd/system/llama-server.service && sudo chmod 644 /etc/systemd/system/llama-server.service && sudo systemctl daemon-reload && sudo systemctl enable llama-server.service"
+        install_cmd = (
+            f"sudo cp {remote_tmp} /etc/systemd/system/llama-server.service && "
+            f"sudo chmod 644 /etc/systemd/system/llama-server.service && "
+            f"sudo systemctl daemon-reload && "
+            f"sudo systemctl enable llama-server.service"
+        )
         ssh.run_cmd(target_ip, user, install_cmd, check=True)
         results["steps"]["systemd_unit"] = "installed"
 
-        # Step 4: Verify prerequisites & model presence
-        bin_check = ssh.run_cmd(
+        # Step 6: Restart service
+        ssh.run_cmd(
             target_ip,
             user,
-            "test -x /usr/local/bin/llama-server || command -v llama-server",
+            "sudo systemctl restart llama-server.service",
             check=False,
         )
-        model_check = ssh.run_cmd(
-            target_ip,
-            user,
-            f"test -f '{model.model_path}'",
-            check=False,
-        )
+        results["steps"]["service_start"] = "restarted"
+        time.sleep(2)
 
-        bin_ok = bin_check.returncode == 0
-        model_ok = model_check.returncode == 0
-
-        if bin_ok and model_ok:
-            ssh.run_cmd(
-                target_ip,
-                user,
-                "sudo systemctl restart llama-server.service",
-                check=False,
-            )
-            results["steps"]["service_start"] = "restarted"
-            time.sleep(2)
-        else:
-            missing_items = []
-            if not bin_ok:
-                missing_items.append("llama-server binary")
-            if not model_ok:
-                missing_items.append(f"model file ({model.model_path})")
-            node.runtime.status = "model_missing"
-            node.runtime.last_error = f"Prerequisites missing: {', '.join(missing_items)}"
-            results["steps"]["service_start"] = "pending_prerequisites"
-            results["success"] = True
-            return results
-
-        # Step 5: Verify Evidence-Based Service Readiness
+        # Step 7: Verify Evidence-Based Service Readiness
         # 1. Systemd active
         status_res = ssh.run_cmd(
             target_ip,
@@ -263,6 +292,7 @@ def provision_single_node(root_dir: Path, node: NodeRecord) -> dict[str, Any]:
             target_ip, model.port, model.health_endpoint, timeout=4
         )
         node.runtime.http_healthy = http_ok
+        node.runtime.health_response = health_data
         node.runtime.latency_ms = latency_ms
 
         if systemd_active and tcp_open and http_ok:
@@ -273,7 +303,11 @@ def provision_single_node(root_dir: Path, node: NodeRecord) -> dict[str, Any]:
             results["success"] = True
         else:
             node.runtime.status = "unhealthy"
-            node.runtime.last_error = f"Health check failed (systemd={systemd_active}, tcp={tcp_open}, http={http_ok})"
+            err_msg = (
+                f"Health check failed (systemd={systemd_active}, tcp={tcp_open}, "
+                f"http={http_ok}, payload={health_data})"
+            )
+            node.runtime.last_error = err_msg
             results["success"] = False
 
         results["steps"]["health_verification"] = {
@@ -296,13 +330,37 @@ def provision_all_nodes(root_dir: Path) -> dict[str, Any]:
     """Provision all enrolled nodes in state/nodes.yaml with per-node fault isolation."""
     registry = load_registry(root_dir)
     sync_known_hosts(root_dir, registry)
+    resolved = resolve_platform(root_dir)
 
     results: dict[str, Any] = {}
     for node_id, node in registry.nodes.items():
         if not node.desired.enabled:
             continue
-        res = provision_single_node(root_dir, node)
-        results[node_id] = res
+        # Guard: do not attempt SSH against nodes with unverified IP
+        if node.runtime.status == "enrolled_pending_ip":
+            results[node_id] = {
+                "node_id": node_id,
+                "ip": node.identity.reserved_ip,
+                "success": False,
+                "skipped": True,
+                "reason": "enrolled_pending_ip: node has not yet acquired reserved IP",
+            }
+            continue
 
-    save_registry(root_dir, registry)
+        try:
+            res = provision_single_node(root_dir, node, resolved)
+            results[node_id] = res
+        except Exception as e:
+            node.runtime.status = "unhealthy"
+            node.runtime.last_error = f"Unhandled provisioning error: {e}"
+            results[node_id] = {
+                "node_id": node_id,
+                "ip": node.identity.reserved_ip,
+                "success": False,
+                "error": str(e),
+            }
+        finally:
+            # Persist state incrementally so successful nodes are preserved if another fails
+            save_registry(root_dir, registry)
+
     return results

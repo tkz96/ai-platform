@@ -67,9 +67,11 @@ class NodeDesiredConfig(BaseModel):
 NodeStatus = Literal[
     "discovered",
     "enrolled",
+    "enrolled_pending_ip",
     "provisioning",
     "ready",
     "model_missing",
+    "prerequisites_missing",
     "unhealthy",
     "offline",
 ]
@@ -83,6 +85,7 @@ class NodeRuntimeState(BaseModel):
     systemd_active: bool = False
     tcp_open: bool = False
     http_healthy: bool = False
+    health_response: dict[str, Any] | None = None
     active_model: str | None = None
     latency_ms: float | None = None
     last_seen: str | None = None
@@ -118,8 +121,12 @@ def load_registry(root_dir: Path) -> NodeRegistry:
     try:
         raw = yaml.safe_load(registry_file.read_text()) or {}
         return NodeRegistry.model_validate(raw)
-    except Exception:
-        return NodeRegistry()
+    except Exception as e:
+        err_msg = (
+            f"Corrupted node registry in {registry_file}: {e}. "
+            f"Please inspect or restore from backup."
+        )
+        raise RuntimeError(err_msg) from e
 
 
 def save_registry(root_dir: Path, registry: NodeRegistry) -> Path:
@@ -180,10 +187,10 @@ def register_or_update_node(
     - New MAC + no replacement requested: Allocates new node ID and reserved IP
     """
     clean_mac = normalize_mac(mac_address)
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_iso = datetime.datetime.now(datetime.UTC).isoformat()
 
     # Case 1: Check if MAC already exists in registry
-    for existing_id, existing_node in registry.nodes.items():
+    for existing_node in registry.nodes.values():
         if normalize_mac(existing_node.identity.mac_address) == clean_mac:
             # Idempotent re-enrollment
             existing_node.identity.hostname = hostname

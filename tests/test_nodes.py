@@ -1,8 +1,6 @@
 import json
 import urllib.request
 from pathlib import Path
-
-import pytest
 from platform.enrollment import make_enrollment_server
 from platform.nodes import (
     GPUInfo,
@@ -22,6 +20,8 @@ from platform.nodes import (
     save_registry,
     sync_known_hosts,
 )
+
+import pytest
 
 
 def test_normalize_mac() -> None:
@@ -62,6 +62,40 @@ def test_registry_persistence(tmp_path: Path) -> None:
     assert "node-01" in reloaded.nodes
     assert reloaded.nodes["node-01"].identity.mac_address == "00:11:22:33:44:55"
     assert reloaded.nodes["node-01"].runtime.status == "ready"
+
+
+def test_corrupted_registry_raises_runtime_error(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(parents=True)
+    corrupted_file = state_dir / "nodes.yaml"
+
+    # Case 1: Malformed YAML syntax
+    corrupted_file.write_text("nodes:\n  node-01:\n    identity: {unclosed")
+    with pytest.raises(RuntimeError, match="Corrupted node registry"):
+        load_registry(tmp_path)
+
+    # Case 2: Schema validation failure
+    corrupted_file.write_text("nodes:\n  node-01:\n    identity: 12345")
+    with pytest.raises(RuntimeError, match="Corrupted node registry"):
+        load_registry(tmp_path)
+
+
+def test_node_status_values() -> None:
+    # Verify all expected status literals work
+    statuses = [
+        "discovered",
+        "enrolled",
+        "enrolled_pending_ip",
+        "provisioning",
+        "ready",
+        "model_missing",
+        "prerequisites_missing",
+        "unhealthy",
+        "offline",
+    ]
+    for st in statuses:
+        state = NodeRuntimeState(status=st)  # type: ignore[arg-type]
+        assert state.status == st
 
 
 def test_ip_allocation() -> None:
@@ -247,6 +281,7 @@ def test_enrollment_server_http_flow(tmp_path: Path) -> None:
     port = server.server_address[1]
 
     import threading
+
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
 
@@ -259,12 +294,14 @@ def test_enrollment_server_http_flow(tmp_path: Path) -> None:
             assert b"echo enroll" in resp.read()
 
         # 2. Reject invalid token
-        bad_payload = json.dumps({
-            "token": "wrong-token",
-            "hostname": "linux-node",
-            "mac_address": "00:11:22:33:44:55",
-            "ssh_user": "ubuntu",
-        }).encode("utf-8")
+        bad_payload = json.dumps(
+            {
+                "token": "wrong-token",
+                "hostname": "linux-node",
+                "mac_address": "00:11:22:33:44:55",
+                "ssh_user": "ubuntu",
+            }
+        ).encode("utf-8")
         req_bad = urllib.request.Request(
             f"{base_url}/api/enroll",
             data=bad_payload,
@@ -275,14 +312,20 @@ def test_enrollment_server_http_flow(tmp_path: Path) -> None:
         assert exc_info.value.code == 403
 
         # 3. Successful enrollment with valid token
-        good_payload = json.dumps({
-            "token": "test-session-token-1234",
-            "hostname": "linux-node-01",
-            "mac_address": "00:11:22:33:44:55",
-            "ssh_user": "ubuntu",
-            "ssh_host_key": "ssh-ed25519 LINUX_HOST_KEY",
-            "hardware": {"cpu": "AMD Ryzen", "ram_gb": 64, "gpus": [{"name": "RTX 4090", "vram_gb": 24}]},
-        }).encode("utf-8")
+        good_payload = json.dumps(
+            {
+                "token": "test-session-token-1234",
+                "hostname": "linux-node-01",
+                "mac_address": "00:11:22:33:44:55",
+                "ssh_user": "ubuntu",
+                "ssh_host_key": "ssh-ed25519 LINUX_HOST_KEY",
+                "hardware": {
+                    "cpu": "AMD Ryzen",
+                    "ram_gb": 64,
+                    "gpus": [{"name": "RTX 4090", "vram_gb": 24}],
+                },
+            }
+        ).encode("utf-8")
         req_good = urllib.request.Request(
             f"{base_url}/api/enroll",
             data=good_payload,

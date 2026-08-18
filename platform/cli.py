@@ -198,6 +198,7 @@ def destroy(
         console.print(f"[bold red]Destroy failed:[/bold red] {e}")
         sys.exit(1)
 
+
 # ── Nodes Subcommand Group ──────────────────────────────────────────────────
 
 nodes_app = typer.Typer(
@@ -215,6 +216,7 @@ def list_nodes_cmd(
 ) -> None:
     """List all enrolled inference nodes and their runtime state."""
     from platform.nodes import load_registry
+
     from rich.table import Table
 
     target_root = root or ROOT_DIR
@@ -233,15 +235,23 @@ def list_nodes_cmd(
     table.add_column("Hardware", style="magenta")
     table.add_column("Active Model", style="yellow")
 
-    for node_id, node in sorted(registry.nodes.items()):
-        status_color = "green" if node.runtime.status == "ready" else "yellow" if node.runtime.status in ("enrolled", "provisioning") else "red"
+    for node in sorted(registry.nodes.values(), key=lambda n: n.identity.id):
+        if node.runtime.status == "ready":
+            status_color = "green"
+        elif node.runtime.status in ("enrolled", "provisioning"):
+            status_color = "yellow"
+        else:
+            status_color = "red"
+
         hw = "CPU Mode"
         if node.runtime.hardware and node.runtime.hardware.gpus:
             hw = ", ".join(f"{g.name} ({g.vram_gb}GB)" for g in node.runtime.hardware.gpus)
         elif node.runtime.hardware:
             hw = f"{node.runtime.hardware.cpu} ({node.runtime.hardware.ram_gb}GB RAM)"
 
-        active_model = node.runtime.active_model or (node.desired.models[0].model_name if node.desired.models else "N/A")
+        active_model = node.runtime.active_model or (
+            node.desired.models[0].model_name if node.desired.models else "N/A"
+        )
         table.add_row(
             node.identity.id,
             node.identity.hostname,
@@ -276,13 +286,21 @@ def enroll_nodes_cmd(
     server, thread = run_enrollment_listener_background(target_root, host=host, port=port)
     console.print("[bold green]Enrollment server running.[/bold green]")
     console.print("[dim]Run this on each fresh Linux PC:[/dim]")
-    console.print(f"  [cyan]wget -q http://{host}:{port}/node-enroll.sh -O node-enroll.sh && chmod +x node-enroll.sh && sudo ./node-enroll.sh --token {token}[/cyan]")
+    cmd_str = (
+        f"wget -q http://{host}:{port}/node-enroll.sh -O node-enroll.sh && "
+        f"chmod +x node-enroll.sh && sudo ./node-enroll.sh --token {token}"
+    )
+    console.print(f"  [cyan]{cmd_str}[/cyan]")
     console.print()
 
     try:
         while True:
             registry = load_registry(target_root)
-            console.print(f"\r[dim]Waiting for nodes... ({len(registry.nodes)} enrolled). Press Ctrl+C to finish.[/dim]", end="")
+            status_line = (
+                f"\r[dim]Waiting for nodes... ({len(registry.nodes)} enrolled). "
+                f"Press Ctrl+C to finish.[/dim]"
+            )
+            console.print(status_line, end="")
             time.sleep(2)
     except KeyboardInterrupt:
         console.print("\n[bold yellow]Stopping enrollment server...[/bold yellow]")
@@ -295,7 +313,9 @@ def enroll_nodes_cmd(
 @nodes_app.command("provision")
 def provision_nodes_cmd(
     root: Path | None = typer.Option(None, "--root", "-r", help="Repository root directory"),
-    node_id: str | None = typer.Option(None, "--node-id", "-n", help="Specific node ID to provision"),
+    node_id: str | None = typer.Option(
+        None, "--node-id", "-n", help="Specific node ID to provision"
+    ),
 ) -> None:
     """Remotely provision enrolled Linux inference nodes over SSH."""
     from platform.nodes import load_registry
@@ -316,11 +336,14 @@ def provision_nodes_cmd(
         res = provision_single_node(target_root, registry.nodes[node_id])
         console.print(f"Result: {res}")
     else:
-        console.print(f"[bold blue]Provisioning {len(registry.nodes)} enrolled node(s)...[/bold blue]")
+        node_cnt = len(registry.nodes)
+        console.print(f"[bold blue]Provisioning {node_cnt} enrolled node(s)...[/bold blue]")
         results = provision_all_nodes(target_root)
         for nid, r in results.items():
             status_style = "green" if r.get("success") else "red"
-            console.print(f"  - Node [cyan]{nid}[/cyan]: [{status_style}]{'SUCCESS' if r.get('success') else 'FAILED'}[/{status_style}]")
+            outcome = "SUCCESS" if r.get("success") else "FAILED"
+            msg = f"  - Node [cyan]{nid}[/cyan]: [{status_style}]{outcome}[/{status_style}]"
+            console.print(msg)
 
 
 @nodes_app.command("verify")

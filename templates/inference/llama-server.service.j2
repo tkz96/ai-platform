@@ -1,17 +1,17 @@
 [Unit]
-Description=AI Platform llama.cpp Inference Server
+Description=AI Platform llama.cpp Inference Server ({{ node.identity.id if node else 'default' }})
 After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User={{ platform.inference.service_user }}
-WorkingDirectory={{ platform.inference.working_directory }}
-ExecStart={{ platform.inference.binary_path }} \
-    --host {{ platform.inference.bind_host }} \
-    --port {{ platform.inference.port }} \
-    --model {{ platform.inference.model_path }} \
-    {{ platform.inference.extra_args | join(' ') }}
+User={{ service_user | default(platform.inference.service_user) }}
+WorkingDirectory={{ working_directory | default(platform.inference.working_directory) }}
+ExecStart={{ binary_path | default(platform.inference.binary_path) | systemd_escape }} \
+    --host {{ bind_host | default(platform.inference.bind_host) }} \
+    --port {{ port | default(platform.inference.port) }} \
+    --model {{ model_path | default(platform.inference.model_path) | systemd_escape }} \
+    {% for arg in (extra_args | default(platform.inference.extra_args)) %}{{ arg | systemd_escape }} {% endfor %}
 Restart=always
 RestartSec=3
 LimitNOFILE=65536

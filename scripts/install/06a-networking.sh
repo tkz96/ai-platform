@@ -141,14 +141,16 @@ ui_step "Starting dnsmasq DHCP server on $ETH_IF (Pool: 10.42.0.100–200)..."
 if start_mac_dhcp_server "$ETH_IF"; then
   ui_success "dnsmasq DHCP server active on $ETH_IF"
 else
-  ui_warning "Could not start dnsmasq. Ensure 'brew install dnsmasq' was completed."
+  ui_error "Failed to start dnsmasq DHCP server on $ETH_IF."
+  ui_fatal "Cannot continue: Mac DHCP server is required before Linux nodes can enroll."
 fi
 
 ui_step "Enabling PF NAT and IP forwarding for private cluster..."
 if enable_mac_nat_gateway; then
   ui_success "PF NAT gateway and packet forwarding active"
 else
-  ui_warning "Could not configure PF NAT gateway. Linux nodes may lack outbound WAN access."
+  ui_error "Failed to configure dedicated PF NAT gateway."
+  ui_fatal "Cannot continue: Mac NAT gateway is required for Linux node network access."
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -169,16 +171,13 @@ else
   ui_success "Cluster SSH keypair ready"
 fi
 
-# Ensure enrollment session token exists
+# Invalidate any pre-existing session token and generate a fresh one
 TOKEN_FILE="$SECRETS_DIR/enrollment_token"
-if [[ ! -f "$TOKEN_FILE" ]]; then
-  SESSION_TOKEN="sk-enroll-$(openssl rand -hex 16 2>/dev/null)"
-  echo "$SESSION_TOKEN" > "$TOKEN_FILE"
-  chmod 600 "$TOKEN_FILE"
-else
-  SESSION_TOKEN=$(cat "$TOKEN_FILE" | tr -d '\r\n')
-fi
-ui_success "Bootstrap session token initialized"
+rm -f "$TOKEN_FILE"
+SESSION_TOKEN="sk-enroll-$(openssl rand -hex 16 2>/dev/null || od -vN 16 -An -tx1 /dev/urandom | tr -d ' \n')"
+echo "$SESSION_TOKEN" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE"
+ui_success "Fresh bootstrap session token generated"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STAGE 5 & 6 — Temporary Enrollment Server & Operator Prompt
@@ -194,6 +193,7 @@ cleanup_enroll_server() {
     kill "$ENROLL_SERVER_PID" 2>/dev/null || true
     wait "$ENROLL_SERVER_PID" 2>/dev/null || true
   fi
+  rm -f "$TOKEN_FILE"
 }
 trap cleanup_enroll_server EXIT INT TERM
 
@@ -211,7 +211,13 @@ server.serve_forever()
 ENROLL_SERVER_PID=$!
 sleep 1
 
-ui_success "Enrollment listener running on http://$MAC_MINI_IP:8765"
+ui_step "Verifying enrollment server and DHCP readiness..."
+if ! smoke_test_mac_network_services; then
+  ui_error "Enrollment services smoke test failed on http://$MAC_MINI_IP:8765/api/enroll/status."
+  cleanup_enroll_server
+  ui_fatal "Cannot continue: Enrollment server did not pass readiness check."
+fi
+ui_success "Enrollment listener running and verified on http://$MAC_MINI_IP:8765"
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -253,10 +259,10 @@ while true; do
   sleep 3
 done
 
-# Stop enrollment server
+# Stop enrollment server and clean up token
 cleanup_enroll_server
 trap - EXIT INT TERM
-ui_success "Enrollment server stopped"
+ui_success "Enrollment server stopped and session token invalidated"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STAGE 7 — Centralized Remote Node Provisioning

@@ -198,3 +198,72 @@ services: {}
     assert "--port 8099" in content
     assert "--model /custom/path/model.gguf" in content
     assert "--fit on -c 16384" in content
+
+
+def test_systemd_escape() -> None:
+    from platform.renderer import systemd_escape
+
+    # Ordinary flags and tokens (no escaping needed)
+    assert systemd_escape("--fit") == "--fit"
+    assert systemd_escape("on") == "on"
+    assert systemd_escape("-fa") == "-fa"
+    assert systemd_escape("/usr/local/bin/llama-server") == "/usr/local/bin/llama-server"
+
+    # Empty string
+    assert systemd_escape("") == '""'
+
+    # Spaces in paths
+    assert systemd_escape("/path/with spaces/model.gguf") == '"/path/with spaces/model.gguf"'
+    assert systemd_escape("argument with spaces") == '"argument with spaces"'
+
+    # Tabs
+    assert systemd_escape("arg\twith\ttab") == '"arg\twith\ttab"'
+
+    # Quotes
+    assert systemd_escape('say "hello"') == '"say \\"hello\\""'
+
+    # Backslashes
+    assert systemd_escape(r"C:\Models\test.gguf") == '"C:\\\\Models\\\\test.gguf"'
+
+
+def test_render_node_service_unit(tmp_path: Path) -> None:
+    from platform.nodes import (
+        ModelAssignment,
+        NodeDesiredConfig,
+        NodeIdentity,
+        NodeRecord,
+        NodeRuntimeState,
+    )
+    from platform.renderer import render_node_service_unit
+
+    repo_root = Path(__file__).parent.parent
+    resolved = resolve_platform(repo_root)
+
+    node = NodeRecord(
+        identity=NodeIdentity(
+            id="node-01",
+            hostname="gpu-pc-1",
+            mac_address="00:11:22:33:44:55",
+            reserved_ip="10.42.0.2",
+            ssh_user="ubuntu",
+        ),
+        desired=NodeDesiredConfig(
+            models=[
+                ModelAssignment(
+                    model_name="test-model",
+                    model_path="/path/with spaces/model.gguf",
+                    port=8080,
+                    extra_args=["--fit", "on", "-c", "32768", "custom arg with space"],
+                )
+            ]
+        ),
+        runtime=NodeRuntimeState(status="enrolled"),
+    )
+
+    unit_content = render_node_service_unit(repo_root, resolved, node)
+    assert "Description=AI Platform llama.cpp Inference Server (node-01)" in unit_content
+    assert "User=ubuntu" in unit_content
+    assert "--host 10.42.0.2" in unit_content
+    assert "--port 8080" in unit_content
+    assert '--model "/path/with spaces/model.gguf"' in unit_content
+    assert '--fit on -c 32768 "custom arg with space"' in unit_content

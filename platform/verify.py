@@ -2,10 +2,10 @@ import socket
 import urllib.error
 import urllib.request
 from pathlib import Path
+from platform.config import ResolvedPlatform, ServiceManifest
+from platform.nodes import NodeRecord, load_registry
 from typing import Any
 
-from platform.config import ResolvedPlatform, ServiceManifest
-from platform.nodes import NodeRecord, NodeRegistry, load_registry
 from rich.console import Group
 from rich.table import Table
 
@@ -66,9 +66,8 @@ def verify_node(node: NodeRecord) -> dict[str, Any]:
     port = model_assign.port if model_assign else 8080
     health_endpoint = model_assign.health_endpoint if model_assign else "/health"
     proto = model_assign.protocol if model_assign else "http"
-    model_name = (
-        node.runtime.active_model
-        or (model_assign.model_name if model_assign else "Unknown")
+    model_name = node.runtime.active_model or (
+        model_assign.model_name if model_assign else "Unknown"
     )
 
     tcp_passed, tcp_msg = check_tcp_port(ip, port)
@@ -132,9 +131,7 @@ def verify_remote_inference(
     ]
 
 
-def verify_platform(
-    resolved: ResolvedPlatform, root_dir: Path | None = None
-) -> dict[str, Any]:
+def verify_platform(resolved: ResolvedPlatform, root_dir: Path | None = None) -> dict[str, Any]:
     local_results: list[dict[str, Any]] = []
     for service_name in resolved.dependency_order:
         manifest = resolved.services[service_name]

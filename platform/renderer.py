@@ -1,5 +1,6 @@
 from pathlib import Path
 from platform.config import ResolvedPlatform, ServiceManifest
+from platform.nodes import NodeRecord, get_healthy_serving_nodes, load_registry
 from typing import Any
 
 import yaml
@@ -11,7 +12,46 @@ class IndentedDumper(yaml.Dumper):
         return super().increase_indent(flow=flow, indentless=False)
 
 
-from platform.nodes import get_healthy_serving_nodes, load_registry
+def systemd_escape(val: Any) -> str:
+    """Serialize a single argv token according to systemd ExecStart command-line escaping rules."""
+    s = str(val)
+    if not s:
+        return '""'
+    if any(c in s for c in ' \t\n\r"\\'):
+        escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return s
+
+
+def render_node_service_unit(
+    root_dir: Path,
+    resolved: ResolvedPlatform,
+    node: NodeRecord,
+) -> str:
+    """Render templates/inference/llama-server.service.j2 for a specific node."""
+    templates_dir = root_dir / "templates"
+    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
+    env.filters["systemd_escape"] = systemd_escape
+
+    model = node.desired.models[0] if node.desired.models else None
+
+    context = {
+        "platform": resolved.config.model_dump(),
+        "node": node.model_dump(mode="json"),
+        "service_user": node.identity.ssh_user or resolved.config.inference.service_user,
+        "working_directory": resolved.config.inference.working_directory,
+        "binary_path": resolved.config.inference.binary_path,
+        "bind_host": node.identity.reserved_ip or resolved.config.inference.bind_host,
+        "port": model.port if model else resolved.config.inference.port,
+        "model_path": model.model_path if model else resolved.config.inference.model_path,
+        "extra_args": model.extra_args if model else resolved.config.inference.extra_args,
+    }
+
+    template = env.get_template("inference/llama-server.service.j2")
+    rendered = template.render(**context)
+    if not rendered.endswith("\n"):
+        rendered += "\n"
+    return rendered
 
 
 def _render_service_templates(root_dir: Path, resolved: ResolvedPlatform) -> list[Path]:
@@ -35,6 +75,7 @@ def _render_service_templates(root_dir: Path, resolved: ResolvedPlatform) -> lis
     }
 
     env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False)
+    env.filters["systemd_escape"] = systemd_escape
 
     # Categories to render: configured container services + inference templates
     categories = list(resolved.config.services)

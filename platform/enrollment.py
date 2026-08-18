@@ -5,12 +5,8 @@ import http.server
 import json
 import os
 import signal
-import socket
-import subprocess
 import threading
 from pathlib import Path
-from typing import Any
-
 from platform.nodes import (
     GPUInfo,
     HardwareSpecs,
@@ -20,6 +16,7 @@ from platform.nodes import (
     save_registry,
     sync_known_hosts,
 )
+from typing import Any
 
 
 def get_session_token(root_dir: Path) -> str:
@@ -78,7 +75,9 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
             else:
-                self._send_json(404, {"status": "error", "error": "node-enroll.sh script not found"})
+                self._send_json(
+                    404, {"status": "error", "error": "node-enroll.sh script not found"}
+                )
         elif path == "/api/enroll/status":
             registry = load_registry(self.root_dir)
             self._send_json(200, {"status": "ok", "enrolled_count": len(registry.nodes)})
@@ -104,7 +103,9 @@ class EnrollmentRequestHandler(http.server.BaseHTTPRequestHandler):
             received_token = str(data.get("token", ""))
             expected_token = get_session_token(self.root_dir)
             if not expected_token or not hmac.compare_digest(received_token, expected_token):
-                self._send_json(403, {"status": "error", "error": "Invalid or expired session token"})
+                self._send_json(
+                    403, {"status": "error", "error": "Invalid or expired session token"}
+                )
                 return
 
             hostname = str(data.get("hostname", "unknown-node"))

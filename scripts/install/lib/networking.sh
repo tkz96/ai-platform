@@ -157,14 +157,35 @@ start_mac_dhcp_server() {
     fi
   fi
 
-  if command -v dnsmasq >/dev/null 2>&1; then
-    # Run dnsmasq with sudo in background
-    sudo dnsmasq -C "$conf_file" -x "$pid_file" 2>/dev/null || true
-    sleep 1
-    return 0
-  else
+  if ! command -v dnsmasq >/dev/null 2>&1; then
     return 1
   fi
+
+  # Validate dnsmasq configuration syntax
+  if ! dnsmasq --test -C "$conf_file" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  # Run dnsmasq with sudo in background
+  if ! sudo dnsmasq -C "$conf_file" -x "$pid_file" 2>/dev/null; then
+    return 1
+  fi
+
+  # Verify process liveness
+  local retries=6
+  while (( retries > 0 )); do
+    if [[ -f "$pid_file" ]]; then
+      local pid
+      pid=$(cat "$pid_file" 2>/dev/null || echo "")
+      if [[ -n "$pid" ]] && sudo kill -0 "$pid" 2>/dev/null; then
+        return 0
+      fi
+    fi
+    sleep 0.5
+    retries=$(( retries - 1 ))
+  done
+
+  return 1
 }
 
 stop_mac_dhcp_server() {
@@ -200,21 +221,71 @@ enable_mac_nat_gateway() {
   local wan_if
   wan_if=$(get_wan_interface)
   [[ -z "$wan_if" ]] && return 1
-  sudo sysctl -w net.inet.ip.forwarding=1 >/dev/null 2>&1 || true
 
-  local anchor="/etc/pf.anchors/ai_platform_nat"
+  # Enable IP forwarding
+  if ! sudo sysctl -w net.inet.ip.forwarding=1 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  # PF Anchor Safety: write rule to dedicated anchor without replacing global PF ruleset
+  local anchor_dir="/etc/pf.anchors"
+  local anchor_file="$anchor_dir/ai_platform_nat"
+  sudo mkdir -p "$anchor_dir" 2>/dev/null || true
+
   printf 'nat on %s from %s to any -> (%s)\n' "$wan_if" "$INFERENCE_SUBNET" "$wan_if" \
-    | sudo tee "$anchor" >/dev/null
-  sudo pfctl -ef "$anchor" >/dev/null 2>&1 || true
+    | sudo tee "$anchor_file" >/dev/null
+
+  # Enable PF subsystem if not already active
+  sudo pfctl -e >/dev/null 2>&1 || true
+
+  # Load only the platform NAT rule into the dedicated anchor
+  if ! sudo pfctl -a ai_platform_nat -f "$anchor_file" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  # Verify anchor is active
+  if ! sudo pfctl -a ai_platform_nat -sn 2>/dev/null | grep -q "nat on $wan_if"; then
+    return 1
+  fi
+
+  return 0
 }
 
 disable_mac_nat_gateway() {
   sudo sysctl -w net.inet.ip.forwarding=0 >/dev/null 2>&1 || true
-  local anchor="/etc/pf.anchors/ai_platform_nat"
-  if [[ -f "$anchor" ]]; then
-    sudo rm -f "$anchor"
-    sudo pfctl -d >/dev/null 2>&1 || true
+  local anchor_file="/etc/pf.anchors/ai_platform_nat"
+  if [[ -f "$anchor_file" ]]; then
+    # Flush only the dedicated AI platform anchor
+    sudo pfctl -a ai_platform_nat -F all >/dev/null 2>&1 || true
+    sudo rm -f "$anchor_file"
   fi
+}
+
+smoke_test_mac_network_services() {
+  local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+  local pid_file="$root_dir/state/dnsmasq.pid"
+
+  # 1. Verify dnsmasq process liveness
+  if [[ ! -f "$pid_file" ]]; then
+    return 1
+  fi
+  local pid
+  pid=$(cat "$pid_file" 2>/dev/null || echo "")
+  if [[ -z "$pid" ]] || ! sudo kill -0 "$pid" 2>/dev/null; then
+    return 1
+  fi
+
+  # 2. Verify enrollment server endpoint readiness
+  local retries=10
+  while (( retries > 0 )); do
+    if curl -sf --max-time 2 "http://$MAC_MINI_IP:8765/api/enroll/status" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+    retries=$(( retries - 1 ))
+  done
+
+  return 1
 }
 
 # ── Multi-Stage Network Verification ─────────────────────────────────────────
