@@ -171,11 +171,20 @@ def make_enrollment_server(
     root_dir: Path, host: str = "10.42.0.1", port: int = 8765
 ) -> DualStackServer:
     """Create enrollment HTTP server bound to the specified interface and port."""
+    import time
     handler_cls = type(
         "ConfiguredEnrollmentHandler",
         (EnrollmentRequestHandler,),
         {"root_dir": root_dir},
     )
+    for attempt in range(5):
+        try:
+            return DualStackServer((host, port), handler_cls)
+        except OSError as e:
+            if attempt < 4 and getattr(e, "errno", None) in (48, 98):
+                time.sleep(0.5)
+                continue
+            raise
     return DualStackServer((host, port), handler_cls)
 
 

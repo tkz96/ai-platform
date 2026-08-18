@@ -125,15 +125,16 @@ if [[ -z "$TARGET_HOME" || ! -d "$TARGET_HOME" ]]; then
 fi
 echo "✓ Managing SSH trust for user: $TARGET_USER ($TARGET_HOME)"
 
-# ── 4. Dynamic Physical Ethernet Interface Detection ─────────────────────────
+# ── 4. Dynamic Physical Ethernet Interface & Routing Auto-Configuration ───────
 echo "→ Detecting active Ethernet interface connected to Mac ($ORCHESTRATOR_IP)..."
 
 ROUTE_OUTPUT=$(ip route get "$ORCHESTRATOR_IP" 2>/dev/null || true)
 DETECTED_DEV=$(echo "$ROUTE_OUTPUT" | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -n 1)
 
 if [[ -z "$DETECTED_DEV" ]]; then
-  # If no direct route yet, find physical non-wireless link with carrier
+  # Find physical non-wireless link
   for dev in $(ip -o link show | awk -F': ' '$2 !~ /^(lo|docker|podman|br-|veth|wlan|wlp|cni)/ {print $2}'); do
+    ip link set dev "$dev" up 2>/dev/null || true
     if ip link show "$dev" 2>/dev/null | grep -qE "state UP|LOWER_UP"; then
       DETECTED_DEV="$dev"
       break
@@ -147,10 +148,21 @@ if [[ -z "$DETECTED_DEV" ]]; then
   exit 1
 fi
 
-# Verify link has carrier
-if ! ip link show "$DETECTED_DEV" 2>/dev/null | grep -qE "state UP|LOWER_UP"; then
-  echo "❌ Error: Interface '$DETECTED_DEV' has no physical link carrier." >&2
-  exit 1
+ip link set dev "$DETECTED_DEV" up 2>/dev/null || true
+
+# Auto-configure default IPv4 route to Mac orchestrator NAT gateway if missing
+if ! ip route | grep -q "default via $ORCHESTRATOR_IP"; then
+  echo "  Configuring IPv4 default gateway via Mac orchestrator ($ORCHESTRATOR_IP)..."
+  ip route replace default via "$ORCHESTRATOR_IP" dev "$DETECTED_DEV" 2>/dev/null || true
+fi
+
+# Auto-configure DNS resolver to use Mac orchestrator and public IPv4 fallback
+mkdir -p /etc/apt/apt.conf.d 2>/dev/null || true
+echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 2>/dev/null || true
+
+if ! grep -q "$ORCHESTRATOR_IP" /etc/resolv.conf 2>/dev/null; then
+  echo "  Configuring DNS resolver via Mac orchestrator ($ORCHESTRATOR_IP)..."
+  printf "nameserver %s\nnameserver 8.8.8.8\n" "$ORCHESTRATOR_IP" > /etc/resolv.conf 2>/dev/null || true
 fi
 
 MAC_ADDR=$(ip link show dev "$DETECTED_DEV" | awk '/link\/ether/{print $2}' || echo "")
@@ -165,9 +177,9 @@ echo "✓ Detected interface: $DETECTED_DEV (MAC: $MAC_ADDR, Current IP: ${CURRE
 # ── 5. OpenSSH Server & Host Key Verification ────────────────────────────────
 echo "→ Ensuring OpenSSH server is active..."
 if ! command -v sshd >/dev/null 2>&1; then
-  echo "  Installing openssh-server..."
+  echo "  Installing openssh-server (IPv4 mode)..."
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq && apt-get install -y -qq openssh-server >/dev/null
+  apt-get update -qq -o Acquire::ForceIPv4=true && apt-get install -y -qq -o Acquire::ForceIPv4=true openssh-server >/dev/null || true
 fi
 
 systemctl enable ssh >/dev/null 2>&1 || systemctl enable sshd >/dev/null 2>&1 || true

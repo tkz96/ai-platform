@@ -15,6 +15,11 @@ NETMASK="255.255.255.0"
 # Canonical probe image pinned by digest
 DEFAULT_PROBE_IMAGE="docker.io/curlimages/curl@sha256:c3b8bee303c6c6beed656cfc921218c529d65aa61114eb9e27c62047a1271b9b"
 
+SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_LIB_DIR/diagnostics.sh" ]]; then
+  source "$SCRIPT_LIB_DIR/diagnostics.sh"
+fi
+
 get_probe_image() {
   local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
   if [[ -f "$root_dir/platform.yaml" ]] && command -v yq >/dev/null 2>&1; then
@@ -104,7 +109,6 @@ setup_dnsmasq_config() {
   local conf_file="$state_dir/dnsmasq.conf"
   local hosts_file="$state_dir/dnsmasq.hosts"
   local lease_file="$state_dir/dnsmasq.leases"
-  local pid_file="$state_dir/dnsmasq.pid"
 
   touch "$hosts_file"
   touch "$lease_file"
@@ -135,6 +139,36 @@ local=/ai.xynotech.internal/
 EOF
 }
 
+stop_mac_dhcp_server() {
+  local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+  local conf_file="$root_dir/state/dnsmasq.conf"
+  local pid_file="/tmp/ai-platform-dnsmasq.pid"
+
+  # 1. Try PID file based termination with exact process identity verification
+  if [[ -f "$pid_file" ]]; then
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && sudo kill -0 "$pid" 2>/dev/null; then
+      local cmd
+      cmd=$(ps -p "$pid" -o command= 2>/dev/null || echo "")
+      if [[ "$cmd" == *"$conf_file"* ]] || [[ "$cmd" == *"dnsmasq"* ]]; then
+        sudo kill "$pid" 2>/dev/null || true
+      fi
+    fi
+    sudo rm -f "$pid_file" 2>/dev/null || rm -f "$pid_file" 2>/dev/null || true
+  fi
+
+  # 2. Fallback: Check if another running dnsmasq process matches our exact config file
+  local matching_pids
+  matching_pids=$(ps aux 2>/dev/null | grep "[d]nsmasq.*${conf_file}" | awk '{print $2}' || true)
+  if [[ -n "$matching_pids" ]]; then
+    while IFS= read -r mpid; do
+      [[ -z "$mpid" ]] && continue
+      sudo kill "$mpid" 2>/dev/null || true
+    done <<< "$matching_pids"
+  fi
+}
+
 start_mac_dhcp_server() {
   local iface="$1"
   local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
@@ -143,9 +177,10 @@ start_mac_dhcp_server() {
   setup_dnsmasq_config "$iface"
 
   local conf_file="$state_dir/dnsmasq.conf"
-  local pid_file="$state_dir/dnsmasq.pid"
+  local err_file="$state_dir/dnsmasq.err"
+  local pid_file="/tmp/ai-platform-dnsmasq.pid"
 
-  # Stop any existing instance
+  # Stop any existing instance using exact matching
   stop_mac_dhcp_server
 
   # Ensure dnsmasq binary exists (installed via brew)
@@ -158,20 +193,37 @@ start_mac_dhcp_server() {
   fi
 
   if ! command -v dnsmasq >/dev/null 2>&1; then
+    ui_error "dnsmasq binary not found in PATH or Homebrew sbin directories."
     return 1
   fi
 
   # Validate dnsmasq configuration syntax
-  if ! dnsmasq --test -C "$conf_file" >/dev/null 2>&1; then
+  local test_err
+  if ! test_err=$(dnsmasq --test -C "$conf_file" 2>&1); then
+    ui_error "dnsmasq syntax check failed: $test_err"
     return 1
   fi
 
-  # Run dnsmasq with sudo in background
-  if ! sudo dnsmasq -C "$conf_file" -x "$pid_file" 2>/dev/null; then
+  # Run dnsmasq with sudo, capturing stderr to err_file
+  rm -f "$err_file"
+  if ! sudo dnsmasq -C "$conf_file" -x "$pid_file" 2>"$err_file"; then
+    local captured_err
+    captured_err=$(cat "$err_file" 2>/dev/null || echo "Unknown startup failure")
+    local port67_owner
+    port67_owner=$(sudo lsof -nP -iUDP:67 2>/dev/null | tail -n +2 || echo "none")
+    if command -v render_diagnostic_box >/dev/null 2>&1; then
+      render_diagnostic_box \
+        "dnsmasq DHCP Server Startup" \
+        "sudo dnsmasq -C $conf_file -x $pid_file" \
+        "1" \
+        "$captured_err" \
+        "Interface: $iface\nIP: $MAC_MINI_IP\nUDP/67 Owner:\n$port67_owner" \
+        "Check if another DHCP service is running or if port 67 is bound."
+    fi
     return 1
   fi
 
-  # Verify process liveness
+  # Verify process liveness and PID file creation
   local retries=6
   while (( retries > 0 )); do
     if [[ -f "$pid_file" ]]; then
@@ -185,32 +237,36 @@ start_mac_dhcp_server() {
     retries=$(( retries - 1 ))
   done
 
-  return 1
-}
-
-stop_mac_dhcp_server() {
-  local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
-  local pid_file="$root_dir/state/dnsmasq.pid"
-
-  if [[ -f "$pid_file" ]]; then
-    local pid
-    pid=$(cat "$pid_file" 2>/dev/null || echo "")
-    if [[ -n "$pid" ]] && ps -p "$pid" >/dev/null 2>&1; then
-      sudo kill "$pid" 2>/dev/null || true
-    fi
-    rm -f "$pid_file"
+  local captured_err
+  captured_err=$(cat "$err_file" 2>/dev/null || echo "PID file $pid_file was not created or process died")
+  local port67_owner
+  port67_owner=$(sudo lsof -nP -iUDP:67 2>/dev/null | tail -n +2 || echo "none")
+  if command -v render_diagnostic_box >/dev/null 2>&1; then
+    render_diagnostic_box \
+      "dnsmasq Liveness Check" \
+      "sudo kill -0 (PID from $pid_file)" \
+      "1" \
+      "$captured_err" \
+      "PID File: $pid_file\nUDP/67 Owner:\n$port67_owner" \
+      "Verify dnsmasq permissions and interface link state."
   fi
+  return 1
 }
 
 reload_mac_dhcp_reservations() {
   local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
-  local pid_file="$root_dir/state/dnsmasq.pid"
+  local conf_file="$root_dir/state/dnsmasq.conf"
+  local pid_file="/tmp/ai-platform-dnsmasq.pid"
 
   if [[ -f "$pid_file" ]]; then
     local pid
     pid=$(cat "$pid_file" 2>/dev/null || echo "")
-    if [[ -n "$pid" ]] && ps -p "$pid" >/dev/null 2>&1; then
-      sudo kill -s SIGHUP "$pid" 2>/dev/null || true
+    if [[ -n "$pid" ]] && sudo kill -0 "$pid" 2>/dev/null; then
+      local cmd
+      cmd=$(ps -p "$pid" -o command= 2>/dev/null || echo "")
+      if [[ "$cmd" == *"$conf_file"* ]] || [[ "$cmd" == *"dnsmasq"* ]]; then
+        sudo kill -s SIGHUP "$pid" 2>/dev/null || true
+      fi
     fi
   fi
 }
@@ -263,7 +319,7 @@ disable_mac_nat_gateway() {
 
 smoke_test_mac_network_services() {
   local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
-  local pid_file="$root_dir/state/dnsmasq.pid"
+  local pid_file="/tmp/ai-platform-dnsmasq.pid"
 
   # 1. Verify dnsmasq process liveness
   if [[ ! -f "$pid_file" ]]; then

@@ -18,7 +18,7 @@ from typing import Any
 
 
 class SSHRunner:
-    def __init__(self, root_dir: Path, timeout: int = 10) -> None:
+    def __init__(self, root_dir: Path, timeout: int = 5) -> None:
         self.root_dir = root_dir
         self.key_file = root_dir / "secrets" / "ssh" / "cluster_orchestrator_key"
         self.known_hosts = root_dir / "state" / "known_hosts"
@@ -32,7 +32,7 @@ class SSHRunner:
         port: int = 22,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
-        """Execute a remote command over SSH with strict host key verification."""
+        """Execute a remote command over SSH with strict host key verification and fast timeouts."""
         ssh_cmd = [
             "ssh",
             "-i",
@@ -53,7 +53,7 @@ class SSHRunner:
             capture_output=True,
             text=True,
             check=check,
-            timeout=self.timeout + 15,
+            timeout=self.timeout + 3,
         )
 
     def scp_file(
@@ -80,16 +80,13 @@ class SSHRunner:
             str(local_file),
             f"{user}@{host}:{remote_dest}",
         ]
-        subprocess.run(scp_cmd, capture_output=True, text=True, check=True, timeout=30)
+        subprocess.run(scp_cmd, capture_output=True, text=True, check=True, timeout=10)
 
 
 def probe_remote_health(
-    ip: str, port: int, endpoint: str = "/health", timeout: int = 4
+    ip: str, port: int, endpoint: str = "/health", timeout: int = 3
 ) -> tuple[bool, dict[str, Any] | None, float]:
-    """Probe HTTP health endpoint on inference node and record response body.
-
-    Delegates to canonical platform.probe engine.
-    """
+    """Probe HTTP health endpoint on inference node and record response body."""
     url = f"http://{ip}:{port}{endpoint}"
     res = probe_http(url, timeout=timeout, require_json_status_ok=True)
     return res.passed, res.payload, res.latency_ms
@@ -110,7 +107,7 @@ def provision_single_node(
     if resolved is None:
         resolved = resolve_platform(root_dir)
 
-    ssh = SSHRunner(root_dir)
+    ssh = SSHRunner(root_dir, timeout=5)
     target_ip = node.identity.reserved_ip
     user = node.identity.ssh_user
     now_iso = datetime.datetime.now(datetime.UTC).isoformat()
@@ -139,7 +136,7 @@ def provision_single_node(
 
         if res.returncode != 0:
             node.runtime.status = "offline"
-            node.runtime.last_error = f"SSH unreachable at {target_ip}: {res.stderr.strip()}"
+            node.runtime.last_error = f"SSH unreachable at {target_ip}: {res.stderr.strip() or 'Connection timeout'}"
             results["steps"]["ssh"] = "failed"
             return results
 
@@ -210,7 +207,7 @@ def provision_single_node(
 
         results["steps"]["model"] = "ok"
 
-        # Step 5: Render and upload systemd unit via authoritative Jinja2 template
+        # Step 5: Render and upload systemd unit via Jinja2 template
         service_content = render_node_service_unit(root_dir, resolved, node)
 
         tmp_service_file = root_dir / "state" / f"llama-server-{node.identity.id}.service"
@@ -240,7 +237,6 @@ def provision_single_node(
         time.sleep(2)
 
         # Step 7: Verify Evidence-Based Service Readiness
-        # 1. Systemd active
         status_res = ssh.run_cmd(
             target_ip,
             user,
@@ -250,13 +246,11 @@ def provision_single_node(
         systemd_active = status_res.stdout.strip() == "active"
         node.runtime.systemd_active = systemd_active
 
-        # 2. TCP Port listening
         tcp_open = check_tcp_port(target_ip, model.port, timeout=3)
         node.runtime.tcp_open = tcp_open
 
-        # 3. HTTP Health & Model Confirmation
         http_ok, health_data, latency_ms = probe_remote_health(
-            target_ip, model.port, model.health_endpoint, timeout=4
+            target_ip, model.port, model.health_endpoint, timeout=3
         )
         node.runtime.http_healthy = http_ok
         node.runtime.health_response = health_data
@@ -285,7 +279,7 @@ def provision_single_node(
         }
 
     except Exception as e:
-        node.runtime.status = "unhealthy"
+        node.runtime.status = "offline"
         node.runtime.last_error = str(e)
         results["error"] = str(e)
         results["success"] = False
@@ -303,7 +297,6 @@ def provision_all_nodes(root_dir: Path) -> dict[str, Any]:
     for node_id, node in registry.nodes.items():
         if not node.desired.enabled:
             continue
-        # Guard: do not attempt SSH against nodes with unverified IP
         if node.runtime.status == "enrolled_pending_ip":
             results[node_id] = {
                 "node_id": node_id,
@@ -318,7 +311,7 @@ def provision_all_nodes(root_dir: Path) -> dict[str, Any]:
             res = provision_single_node(root_dir, node, resolved)
             results[node_id] = res
         except Exception as e:
-            node.runtime.status = "unhealthy"
+            node.runtime.status = "offline"
             node.runtime.last_error = f"Unhandled provisioning error: {e}"
             results[node_id] = {
                 "node_id": node_id,
@@ -327,7 +320,6 @@ def provision_all_nodes(root_dir: Path) -> dict[str, Any]:
                 "error": str(e),
             }
         finally:
-            # Persist state incrementally so successful nodes are preserved if another fails
             save_registry(root_dir, registry)
 
     return results

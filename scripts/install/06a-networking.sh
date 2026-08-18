@@ -41,9 +41,11 @@ while true; do
   if [[ -n "$CANDIDATES_RAW" ]]; then
     break
   fi
-  ui_recoverable \
+  if ! ui_recoverable \
     "No physical Ethernet/Thunderbolt interfaces detected on this Mac." \
-    "Connect a USB-to-Ethernet adapter or Thunderbolt Ethernet adapter, then press Enter to rescan."
+    "Connect a USB-to-Ethernet adapter or Thunderbolt Ethernet adapter, then press Enter to rescan."; then
+    exit 1
+  fi
 done
 
 WAN_IF=$(get_wan_interface)
@@ -123,9 +125,11 @@ done
 while ! interface_has_link "$ETH_IF"; do
   echo
   ui_warning "No physical link detected on $ETH_IF. Is the Ethernet cable connected to the private switch?"
-  ui_recoverable \
+  if ! ui_recoverable \
     "Physical link inactive on $ETH_IF." \
-    "Connect the Ethernet cable from this Mac ($ETH_IF) to the private switch or Linux PC, then press Enter to re-check."
+    "Connect the Ethernet cable from this Mac ($ETH_IF) to the private switch or Linux PC, then press Enter to re-check."; then
+    exit 1
+  fi
 done
 ui_success "Physical carrier active on $ETH_IF"
 
@@ -144,9 +148,11 @@ while true; do
     break
   fi
 
-  ui_recoverable \
+  if ! ui_recoverable \
     "Static IP $MAC_MINI_IP is not active on $ETH_IF." \
-    "Check Network settings for $SELECTED_SVC. Ensure it allows manual IP $MAC_MINI_IP (255.255.255.0).\n  Press Enter to retry."
+    "Check Network settings for $SELECTED_SVC. Ensure it allows manual IP $MAC_MINI_IP (255.255.255.0).\n  Press Enter to retry."; then
+    exit 1
+  fi
 done
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -162,9 +168,11 @@ while true; do
     break
   fi
 
-  ui_recoverable \
+  if ! ui_recoverable \
     "Failed to start dnsmasq DHCP server on $ETH_IF." \
-    "Check that port 67 is not in use by another DHCP process.\n  Run: sudo lsof -i :67\n  Press Enter to retry."
+    "Check that port 67 is not in use by another DHCP process.\n  Run: sudo lsof -i :67\n  Press Enter to retry."; then
+    exit 1
+  fi
 done
 
 while true; do
@@ -174,9 +182,11 @@ while true; do
     break
   fi
 
-  ui_recoverable \
+  if ! ui_recoverable \
     "Failed to configure dedicated PF NAT gateway." \
-    "Check PF status with: sudo pfctl -s info\n  Press Enter to retry."
+    "Check PF status with: sudo pfctl -s info\n  Press Enter to retry."; then
+    exit 1
+  fi
 done
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -246,16 +256,15 @@ start_enrollment_server_process
 
 ui_step "Verifying enrollment server and DHCP readiness..."
 while ! smoke_test_mac_network_services; do
-  local diag_server="${RED}crashed / not running${RESET}"
-  local diag_dhcp="${RED}not running${RESET}"
+  diag_server="${RED}crashed / not running${RESET}"
+  diag_dhcp="${RED}not running${RESET}"
 
   if [[ -n "$ENROLL_SERVER_PID" ]] && ps -p "$ENROLL_SERVER_PID" >/dev/null 2>&1; then
     diag_server="${GREEN}process running (endpoint failing)${RESET}"
   fi
 
-  local pid_file="$STATE_DIR/dnsmasq.pid"
+  pid_file="/tmp/ai-platform-dnsmasq.pid"
   if [[ -f "$pid_file" ]]; then
-    local dpid
     dpid=$(cat "$pid_file" 2>/dev/null || echo "")
     if [[ -n "$dpid" ]] && sudo kill -0 "$dpid" 2>/dev/null; then
       diag_dhcp="${GREEN}running (PID $dpid)${RESET}"
@@ -274,7 +283,7 @@ while ! smoke_test_mac_network_services; do
   echo -e "  [Q] ${RED}Quit${RESET}   — Exit the installer"
   echo
 
-  local key=""
+  key=""
   read -rsn1 key
   case "$key" in
     r|R|"")
@@ -289,7 +298,7 @@ while ! smoke_test_mac_network_services; do
     q|Q)
       cleanup_enroll_server
       ui_info "Exiting at user request."
-      exit 0
+      exit 1
       ;;
   esac
 done
@@ -298,24 +307,24 @@ if [[ "$ENROLLMENT_SKIPPED" != "true" ]]; then
   ui_success "Enrollment listener running and verified on http://$MAC_MINI_IP:8765"
 
   echo
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  AI Platform — Linux Inference Node Enrollment"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Session Token: ${BOLD}${CYAN}${SESSION_TOKEN}${RESET}"
-  echo
-  echo "  Run this on every fresh Linux inference PC:"
-  echo
-  echo "  ${BOLD}Option A — wget (available on fresh Ubuntu):${RESET}"
-  echo "    wget -q http://${MAC_MINI_IP}:8765/node-enroll.sh -O node-enroll.sh"
-  echo
-  echo "  ${BOLD}Option B — curl (if installed):${RESET}"
-  echo "    curl -fsS http://${MAC_MINI_IP}:8765/node-enroll.sh -o node-enroll.sh"
-  echo
-  echo "  ${BOLD}Then execute:${RESET}"
-  echo "    chmod +x node-enroll.sh"
-  echo "    sudo ./node-enroll.sh --token ${SESSION_TOKEN}"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo
+  echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo -e "  AI Platform — Linux Inference Node Enrollment"
+  echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo -e "  Session Token: ${BOLD}${CYAN}${SESSION_TOKEN}${RESET}"
+  echo -e ""
+  echo -e "  Run this on every fresh Linux inference PC:"
+  echo -e ""
+  echo -e "  ${BOLD}Option A — wget (available on fresh Ubuntu):${RESET}"
+  echo -e "    wget -q http://${MAC_MINI_IP}:8765/node-enroll.sh -O node-enroll.sh"
+  echo -e ""
+  echo -e "  ${BOLD}Option B — curl (if installed):${RESET}"
+  echo -e "    curl -fsS http://${MAC_MINI_IP}:8765/node-enroll.sh -o node-enroll.sh"
+  echo -e ""
+  echo -e "  ${BOLD}Then execute:${RESET}"
+  echo -e "    chmod +x node-enroll.sh"
+  echo -e "    sudo ./node-enroll.sh --token ${SESSION_TOKEN}"
+  echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo -e ""
 
   ui_live_status_clear
   while true; do
@@ -328,7 +337,7 @@ if [[ "$ENROLLMENT_SKIPPED" != "true" ]]; then
       LEASE_COUNT=$(grep -c "^" "$STATE_DIR/dnsmasq.leases" 2>/dev/null || echo "0")
     fi
 
-    local link_str="${RED}disconnected${RESET}"
+    link_str="${RED}disconnected${RESET}"
     if interface_has_link "$ETH_IF"; then
       link_str="${GREEN}connected${RESET}"
     fi
@@ -340,7 +349,7 @@ if [[ "$ENROLLMENT_SKIPPED" != "true" ]]; then
       "" \
       "  ${DIM}Press Enter to proceed with enrolled nodes | S to skip | Q to quit${RESET}"
 
-    local key=""
+    key=""
     if read -rsn1 -t 5 key; then
       case "$key" in
         "")  # Enter key

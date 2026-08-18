@@ -85,6 +85,22 @@ ui_splash() {
   echo
 }
 
+ui_system_info() {
+  local os_ver arch mem_gb disk_free
+  os_ver=$(sw_vers -productVersion 2>/dev/null || echo "unknown")
+  arch=$(uname -m)
+  mem_gb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
+  disk_free=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
+
+  echo -e "  ${BOLD}System Information${RESET}"
+  echo
+  echo -e "    ${DIM}macOS${RESET}        ${os_ver}"
+  echo -e "    ${DIM}Architecture${RESET} ${arch}"
+  echo -e "    ${DIM}Memory${RESET}       ${mem_gb} GB"
+  echo -e "    ${DIM}Disk${RESET}         ${disk_free} GB free"
+  echo
+}
+
 # ── Status Messages ─────────────────────────────────────────────────────────
 
 ui_success() {
@@ -127,7 +143,7 @@ ui_recoverable() {
       q|Q)
         echo
         ui_info "Exiting at user request."
-        exit 0
+        return 1
         ;;
       "")  # Enter key
         return 0
@@ -149,18 +165,8 @@ ui_quit_prompt() {
     echo -e "  ${guidance}"
   fi
   echo
-  echo -e "  ${DIM}Press Q to exit${RESET}"
-
-  while true; do
-    local key=""
-    read -rsn1 key
-    case "$key" in
-      q|Q)
-        echo
-        exit 0
-        ;;
-    esac
-  done
+  echo -e "  ${DIM}Exiting installer...${RESET}"
+  exit 1
 }
 
 _UI_LIVE_LINES=0
@@ -172,11 +178,18 @@ ui_live_status() {
   fi
   _UI_LIVE_LINES=$line_count
   for line in "$@"; do
-    printf '\033[2K%b\n' "$line"
+    printf '\033[2K\r%b\n' "$line"
   done
 }
 
 ui_live_status_clear() {
+  if [[ "${_UI_LIVE_LINES:-0}" -gt 0 ]]; then
+    printf '\033[%dA' "$_UI_LIVE_LINES"
+    for (( i=0; i<_UI_LIVE_LINES; i++ )); do
+      printf '\033[2K\r\n'
+    done
+    printf '\033[%dA' "$_UI_LIVE_LINES"
+  fi
   _UI_LIVE_LINES=0
 }
 
@@ -220,15 +233,16 @@ ui_choice() {
     echo -e "    ${CYAN}[$((i + 1))]${RESET} ${options[$i]}" >&2
   done
   echo >&2
-  printf "  ${BOLD}Choice:${RESET} " >&2
-  read -r choice
 
-  if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
-    echo "$choice"
-    return 0
-  fi
-
-  return 1
+  while true; do
+    printf "  ${BOLD}Select an option (1-%d):${RESET} " "${#options[@]}" >&2
+    read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
+      echo "$((choice - 1))"
+      return 0
+    fi
+    ui_warning "Invalid selection. Please enter a number between 1 and ${#options[@]}." >&2
+  done
 }
 
 ui_prompt_text() {
@@ -236,6 +250,7 @@ ui_prompt_text() {
   local default="${2:-}"
   local answer
 
+  echo >&2
   if [[ -n "$default" ]]; then
     printf "  ${BOLD}%s [%s]:${RESET} " "$prompt" "$default" >&2
   else
@@ -243,100 +258,52 @@ ui_prompt_text() {
   fi
 
   read -r answer
-  echo "${answer:-$default}"
+  answer="${answer:-$default}"
+  echo "$answer"
 }
 
 ui_prompt_secret() {
   local prompt="$1"
   local answer
 
+  echo >&2
   printf "  ${BOLD}%s:${RESET} " "$prompt" >&2
   read -rs answer
   echo >&2
   echo "$answer"
 }
 
-# ── Pause and Wait ──────────────────────────────────────────────────────────
-
-ui_pause() {
-  local msg="${1:-Press Enter to continue...}"
-  echo
-  printf "  ${DIM}%s${RESET}" "$msg"
-  read -r
-}
-
-ui_wait_for_file() {
-  local file="$1"
-  local msg="$2"
-
-  echo
-  ui_warning "$msg"
-  echo -e "  ${DIM}File: $file${RESET}"
-  echo
-  echo -e "  ${BOLD}Edit the file, save it, then press Enter to continue...${RESET}"
-  read -r
-}
-
-# ── System Info ─────────────────────────────────────────────────────────────
-
-ui_system_info() {
-  local macos_version arch memory disk
-
-  macos_version=$(sw_vers -productVersion 2>/dev/null || echo "unknown")
-  arch=$(uname -m)
-  memory=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
-  disk=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "unknown")
-
-  echo -e "  ${BOLD}System Information${RESET}"
-  echo
-  echo -e "    ${DIM}macOS${RESET}        ${macos_version}"
-  echo -e "    ${DIM}Architecture${RESET} ${arch}"
-  echo -e "    ${DIM}Memory${RESET}       ${memory} GB"
-  echo -e "    ${DIM}Disk${RESET}         ${disk} GB free"
-  echo
-}
-
-# ── Dependency Check Display ───────────────────────────────────────────────
-
 ui_dependency_check() {
   local name="$1"
   local check_cmd="$2"
-  local version_cmd="$3"
+  local version_cmd="${3:-}"
 
   if eval "$check_cmd" >/dev/null 2>&1; then
-    local version
-    version=$(eval "$version_cmd" 2>/dev/null || echo "installed")
-    ui_success "$name $version"
+    local ver=""
+    if [[ -n "$version_cmd" ]]; then
+      ver=$(eval "$version_cmd" 2>/dev/null || echo "")
+    fi
+    if [[ -n "$ver" ]]; then
+      ui_success "$name ($ver)"
+    else
+      ui_success "$name"
+    fi
     return 0
   else
-    ui_error "$name (not installed)"
+    ui_error "$name (not found)"
     return 1
   fi
 }
 
-# ── Table ───────────────────────────────────────────────────────────────────
-
-ui_table_row() {
-  local col1="$1"
-  local col2="$2"
-  local col1_width="${3:-20}"
-
-  printf "  %-${col1_width}s %s\n" "$col1" "$col2"
-}
-
-# ── Final Banner ────────────────────────────────────────────────────────────
-
 ui_done_banner() {
-  local domain="$1"
-  local http_port="$2"
-  local https_port="$3"
-  local line
-  line=$(printf '━%.0s' $(seq 1 $BOX_WIDTH))
+  local domain="${1:-localhost}"
+  local http_port="${2:-8080}"
+  local https_port="${3:-8443}"
 
   echo
-  echo -e "${BOLD}${GREEN}${line}${RESET}"
+  echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   echo -e "${BOLD}${GREEN}  AI Platform is ready${RESET}"
-  echo -e "${BOLD}${GREEN}${line}${RESET}"
+  echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   echo
   echo -e "  ${BOLD}Langfuse:${RESET}"
   echo -e "    http://localhost:3000"
@@ -354,6 +321,6 @@ ui_done_banner() {
   echo -e "  ${BOLD}Inference:${RESET}"
   echo -e "    ${GREEN}${SYM_OK}${RESET} Connected"
   echo
-  echo -e "${BOLD}${GREEN}${line}${RESET}"
+  echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   echo
 }
