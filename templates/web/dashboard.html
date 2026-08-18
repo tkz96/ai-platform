@@ -1,25 +1,56 @@
 {% extends "base.html" %}
 
-{% block title %}AI Platform — Dashboard{% endblock %}
+{% block title %}AI Platform — Control Plane & Inference Cluster{% endblock %}
 
 {% block content %}
-<div style="display: flex; flex-direction: column; gap: 2rem;">
+<div style="display: flex; flex-direction: column; gap: 1.75rem;">
 
-  <!-- Section 1: Control Plane Services -->
+  <!-- Operator Metric Strip (UI Craft Command Composition) -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+    <!-- Hero Metric Card (Primary) -->
+    <div class="glass-card" style="padding: 1.25rem; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(17, 24, 39, 0.8)); border-color: rgba(6, 182, 212, 0.25);">
+      <div style="font-size: 0.75rem; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.04em;">Control Plane Services</div>
+      <div class="tabular-nums" style="font-size: 2.25rem; font-weight: 700; color: #ffffff; margin-top: 0.25rem; letter-spacing: -0.03em;">6 / 6</div>
+      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">Containers active on Podman VM</div>
+    </div>
+
+    <!-- Support Metric 1 -->
+    <div class="glass-card" style="padding: 1.25rem;">
+      <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Inference Subnet</div>
+      <div class="mono tabular-nums" style="font-size: 1.5rem; font-weight: 600; color: #38bdf8; margin-top: 0.35rem;">10.42.0.0/24</div>
+      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">1 GPU Node Enrolled (<code class="mono" style="color: #34d399;">10.42.0.2</code>)</div>
+    </div>
+
+    <!-- Support Metric 2 -->
+    <div class="glass-card" style="padding: 1.25rem;">
+      <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">DHCP & NAT Gateway</div>
+      <div class="mono tabular-nums" style="font-size: 1.5rem; font-weight: 600; color: #34d399; margin-top: 0.35rem;">Active</div>
+      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">macOS PF NAT + dnsmasq (<code class="mono">10.42.0.1</code>)</div>
+    </div>
+
+    <!-- Support Metric 3 -->
+    <div class="glass-card" style="padding: 1.25rem;">
+      <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Gateway Proxies</div>
+      <div class="mono tabular-nums" style="font-size: 1.5rem; font-weight: 600; color: #e5e7eb; margin-top: 0.35rem;">:8080 / :4000</div>
+      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">Caddy Gateway + LiteLLM Proxy</div>
+    </div>
+  </div>
+
+  <!-- Section 1: Control Plane Services Grid -->
   <section>
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
       <div>
-        <h2 style="font-size: 1.25rem; font-weight: 600; color: #ffffff;">Control Plane Services</h2>
-        <p style="font-size: 0.8rem; color: var(--text-muted);">Rootless Podman containers on Mac Mini orchestrator</p>
+        <h2 style="font-size: 1.15rem; font-weight: 600; color: #ffffff; letter-spacing: -0.01em;">Control Plane Services</h2>
+        <p style="font-size: 0.775rem; color: var(--text-muted);">Rootless Podman containers managing gateway, database, and telemetry</p>
       </div>
 
-      <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
-        <span style="width: 8px; height: 8px; border-radius: 50%; background: #06b6d4; display: inline-block;"></span>
-        Live Polling (Every 5s)
+      <div style="font-size: 0.725rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--accent-cyan); display: inline-block;"></span>
+        Polling Every 5s
       </div>
     </div>
 
-    <!-- Live HTMX polling container for Services -->
+    <!-- HTMX Live Polling Container for Services -->
     <div 
       id="services-grid-container" 
       hx-get="/api/ui/services" 
@@ -31,19 +62,19 @@
 
   <!-- Section 2: Remote Inference Cluster Nodes -->
   <section>
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
       <div>
-        <h2 style="font-size: 1.25rem; font-weight: 600; color: #ffffff;">Remote Inference Cluster</h2>
-        <p style="font-size: 0.8rem; color: var(--text-muted);">Dedicated Linux GPU nodes on private Ethernet link (10.42.0.0/24)</p>
+        <h2 style="font-size: 1.15rem; font-weight: 600; color: #ffffff; letter-spacing: -0.01em;">Remote Inference Cluster</h2>
+        <p style="font-size: 0.775rem; color: var(--text-muted);">Dedicated Linux PC running model inference over private Ethernet</p>
       </div>
 
-      <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
-        <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
-        Live Polling (Every 5s)
+      <div style="font-size: 0.725rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--status-emerald); display: inline-block;"></span>
+        Polling Every 5s
       </div>
     </div>
 
-    <!-- Live HTMX polling container for Nodes -->
+    <!-- HTMX Live Polling Container for Nodes -->
     <div 
       id="nodes-grid-container" 
       hx-get="/api/ui/nodes" 
@@ -53,29 +84,31 @@
     </div>
   </section>
 
-  <!-- Section 3: Quick Platform Links & Endpoints -->
-  <section class="glass-card" style="padding: 1.5rem;">
-    <h3 style="font-size: 1rem; font-weight: 600; color: #ffffff; margin-bottom: 1rem;">🚀 Quick Platform Endpoints</h3>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; font-size: 0.85rem;">
-      <a href="http://localhost:4000" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
-        <div style="font-weight: 600; color: #06b6d4;">LiteLLM Proxy</div>
-        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://localhost:4000</div>
+  <!-- Section 3: Platform Endpoints & Reference Cards -->
+  <section class="glass-card" style="padding: 1.25rem;">
+    <h3 style="font-size: 0.95rem; font-weight: 600; color: #ffffff; margin-bottom: 0.85rem;">Platform Endpoints</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.85rem; font-size: 0.825rem;">
+      
+      <a href="http://localhost:4000" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(6,182,212,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
+        <div style="font-weight: 600; color: var(--accent-cyan);">LiteLLM API Proxy</div>
+        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://localhost:4000</div>
       </a>
 
-      <a href="http://localhost:3000" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
-        <div style="font-weight: 600; color: #6366f1;">Langfuse Observability</div>
-        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://localhost:3000</div>
+      <a href="http://localhost:3000" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(99,102,241,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
+        <div style="font-weight: 600; color: #818cf8;">Langfuse Observability</div>
+        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://localhost:3000</div>
       </a>
 
-      <a href="http://localhost:8080" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
-        <div style="font-weight: 600; color: #10b981;">Caddy Gateway</div>
-        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://localhost:8080</div>
+      <a href="http://localhost:8080" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(16,185,129,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
+        <div style="font-weight: 600; color: #34d399;">Caddy Reverse Proxy</div>
+        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://localhost:8080</div>
       </a>
 
-      <a href="http://10.42.0.2:8080/health" target="_blank" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem; text-decoration: none; color: var(--text-main);">
-        <div style="font-weight: 600; color: #38bdf8;">llama-server Health</div>
-        <div class="mono" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">http://10.42.0.2:8080/health</div>
+      <a href="http://10.42.0.2:8080/health" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(56,189,248,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
+        <div style="font-weight: 600; color: #38bdf8;">llama-server Health Probe</div>
+        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://10.42.0.2:8080/health</div>
       </a>
+
     </div>
   </section>
 

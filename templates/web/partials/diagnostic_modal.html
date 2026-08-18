@@ -2,53 +2,58 @@
   <div class="modal-content" @click.away="open = false">
     
     <!-- Modal Header -->
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 1rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.85rem;">
       <div>
-        <h3 style="font-size: 1.15rem; font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 0.5rem;">
-          🔍 Diagnostic Report: {{ service_name }}
+        <h3 style="font-size: 1.1rem; font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 0.45rem;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Diagnostic Report: {{ service_name }}
         </h3>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Operation: <code class="mono" style="color: #38bdf8;">{{ diag.operation }}</code></p>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">Operation: <code class="mono" style="color: #38bdf8;">{{ diag.operation }}</code></p>
       </div>
 
-      <button @click="open = false" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+      <button @click="open = false" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.2rem;" title="Close modal">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
 
     <!-- Status Banner -->
-    <div style="margin-bottom: 1.25rem;">
+    <div style="margin-bottom: 1.15rem;">
       {% if diag.exit_code == 0 %}
-        <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.75rem 1rem; border-radius: 8px; color: #34d399; font-size: 0.875rem; font-weight: 500;">
-          ✓ Diagnosis Passed (Exit Code 0)
+        <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); color: #34d399; font-size: 0.825rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Diagnostic checks passed (exit code 0)
         </div>
       {% else %}
-        <div style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); padding: 0.75rem 1rem; border-radius: 8px; color: #fb7185; font-size: 0.875rem; font-weight: 500;">
-          ⚠ Diagnostic Failure (Exit Code {{ diag.exit_code }})
+        <div style="background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.25); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); color: #fb7185; font-size: 0.825rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Diagnostic check failed (exit code {{ diag.exit_code }})
         </div>
       {% endif %}
     </div>
 
     <!-- Executed Command -->
     <div style="margin-bottom: 1rem;">
-      <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.35rem;">Command Executed</label>
+      <label style="font-size: 0.725rem; font-weight: 600; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.3rem;">Command Executed</label>
       <div class="terminal-box">{{ diag.command }}</div>
     </div>
 
     <!-- Stderr / Output (Redacted) -->
     {% if diag.stderr or diag.stdout %}
     <div style="margin-bottom: 1rem;">
-      <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.35rem;">Captured Error / Output (Sanitized)</label>
+      <label style="font-size: 0.725rem; font-weight: 600; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.3rem;">Captured Output (Sanitized)</label>
       <div class="terminal-box {% if diag.exit_code != 0 %}error{% endif %}">{{ diag.stderr or diag.stdout }}</div>
     </div>
     {% endif %}
 
     <!-- Detected State -->
     {% if diag.detected_state %}
-    <div style="margin-bottom: 1.25rem;">
-      <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.35rem;">Detected Empirical State</label>
-      <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.75rem; font-size: 0.8rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem;">
+    <div style="margin-bottom: 1.15rem;">
+      <label style="font-size: 0.725rem; font-weight: 600; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.3rem;">Detected State</label>
+      <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 0.775rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.4rem;">
         {% for k, v in diag.detected_state.items() %}
           <div>
-            <span style="color: var(--text-muted);">{{ k }}:</span>
-            <span class="mono" style="color: #e5e7eb; word-break: break-all;">{{ v }}</span>
+            <span style="color: var(--text-subtle);">{{ k }}:</span>
+            <span class="mono tabular-nums" style="color: #e5e7eb; word-break: break-all;">{{ v }}</span>
           </div>
         {% endfor %}
       </div>
@@ -57,20 +62,23 @@
 
     <!-- Recommendation -->
     {% if diag.recommendation %}
-    <div style="margin-bottom: 1.5rem; background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.25); padding: 0.85rem 1rem; border-radius: 8px;">
-      <div style="font-size: 0.75rem; font-weight: 600; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em;">Recommended Remediation</div>
-      <div style="font-size: 0.85rem; color: #e0f2fe; margin-top: 0.25rem;">{{ diag.recommendation }}</div>
+    <div style="margin-bottom: 1.35rem; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2); padding: 0.75rem 0.85rem; border-radius: var(--radius-sm);">
+      <div style="font-size: 0.725rem; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.04em;">Recommended Action</div>
+      <div style="font-size: 0.825rem; color: #e0f2fe; margin-top: 0.2rem;">{{ diag.recommendation }}</div>
     </div>
     {% endif %}
 
     <!-- Modal Footer Controls -->
-    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem;">
+    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; border-top: 1px solid var(--border-subtle); padding-top: 0.85rem;">
       <button @click="open = false" class="btn btn-secondary">Close</button>
       
       {% if diag.is_retryable %}
       <form hx-post="/api/ui/services/{{ service_name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" @submit="open = false">
         <input type="hidden" name="action" value="restart">
-        <button type="submit" class="btn btn-primary">⚡ Retry Service</button>
+        <button type="submit" class="btn btn-primary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Retry Service
+        </button>
       </form>
       {% endif %}
     </div>

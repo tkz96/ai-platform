@@ -1,69 +1,84 @@
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem;">
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.15rem;">
   {% for s in services %}
-  <div class="glass-card" style="padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
+  <div class="glass-card" style="padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between;">
     <div>
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.65rem;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span style="font-weight: 600; font-size: 1rem; color: #ffffff;">{{ s.name }}</span>
+          <span style="font-weight: 600; font-size: 0.95rem; color: #ffffff;">{{ s.name }}</span>
         </div>
         <div>
           {% if s.status.startswith('HEALTHY') %}
-            <span class="badge badge-healthy">✓ HEALTHY</span>
+            <span class="badge badge-healthy">
+              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
+              Healthy
+            </span>
           {% elif s.status.startswith('UNHEALTHY') %}
-            <span class="badge badge-unhealthy">⚠ {{ s.status }}</span>
+            <span class="badge badge-unhealthy">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Unhealthy
+            </span>
           {% else %}
-            <span class="badge badge-stopped">● {{ s.status }}</span>
+            <span class="badge badge-stopped">
+              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
+              Stopped
+            </span>
           {% endif %}
         </div>
       </div>
 
-      <div style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 1rem;">
-        <span>Endpoint: </span>
-        <a href="{{ s.endpoint }}" target="_blank" class="mono" style="color: #38bdf8; text-decoration: none;">{{ s.endpoint }}</a>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+        <span style="color: var(--text-subtle);">Endpoint: </span>
+        <a href="{{ s.endpoint }}" target="_blank" class="mono tabular-nums" style="color: #38bdf8; text-decoration: none;">{{ s.endpoint }}</a>
       </div>
     </div>
 
     <!-- Actions Toolbar -->
-    <div style="display: flex; align-items: center; gap: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 0.4rem; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; flex-wrap: wrap;">
+      
       <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
         <input type="hidden" name="action" value="restart">
-        <button type="submit" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">
-          ⚡ Restart
+        <button type="submit" class="btn btn-secondary" title="Restart container">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Restart
         </button>
       </form>
 
       {% if s.passed %}
       <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
         <input type="hidden" name="action" value="stop">
-        <button type="submit" class="btn btn-danger" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">
-          ⏹ Stop
+        <button type="submit" class="btn btn-danger" title="Stop container">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+          Stop
         </button>
       </form>
       {% else %}
       <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
         <input type="hidden" name="action" value="launch">
-        <button type="submit" class="btn btn-primary" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;">
-          ▶ Launch
+        <button type="submit" class="btn btn-primary" title="Launch container">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Launch
         </button>
       </form>
       {% endif %}
 
       <button 
         class="btn btn-secondary" 
-        style="font-size: 0.75rem; padding: 0.3rem 0.6rem;"
         hx-get="/api/ui/services/{{ s.name }}/logs"
         hx-target="#logs-container"
-        hx-swap="innerHTML">
-        📋 Logs
+        hx-swap="innerHTML"
+        title="View container logs">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Logs
       </button>
 
       <button 
         class="btn btn-secondary" 
-        style="font-size: 0.75rem; padding: 0.3rem 0.6rem;"
         hx-get="/api/ui/services/{{ s.name }}/diagnose"
         hx-target="#modal-container"
-        hx-swap="innerHTML">
-        🔍 Diagnose
+        hx-swap="innerHTML"
+        title="Run service diagnostics">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Diagnose
       </button>
     </div>
   </div>
