@@ -326,8 +326,9 @@ if [[ -n "$CONN_UUID" ]]; then
     echo "  Reapplying NetworkManager connection ($CONN_UUID)..."
     nmcli connection up uuid "$CONN_UUID" 2>/dev/null || true
   else
-    echo "⚠️  Warning: Active connection on $DETECTED_DEV uses IPv4 method '$IPV4_METHOD', not DHCP ('auto')."
-    echo "   DHCP renewal may not produce a reserved IP. Consider switching to DHCP."
+    echo "  Switching NetworkManager connection ($CONN_UUID) to DHCP ('auto')..."
+    nmcli connection modify uuid "$CONN_UUID" ipv4.method auto 2>/dev/null || true
+    nmcli connection up uuid "$CONN_UUID" 2>/dev/null || true
   fi
 elif command -v dhclient >/dev/null 2>&1; then
   echo "  Refreshing DHCP lease via dhclient on $DETECTED_DEV..."
