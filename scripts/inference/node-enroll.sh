@@ -330,10 +330,12 @@ if [[ -n "$CONN_UUID" ]]; then
     nmcli connection modify uuid "$CONN_UUID" ipv4.method auto 2>/dev/null || true
     nmcli connection up uuid "$CONN_UUID" 2>/dev/null || true
   fi
-elif command -v dhclient >/dev/null 2>&1; then
-  echo "  Refreshing DHCP lease via dhclient on $DETECTED_DEV..."
-  dhclient -r "$DETECTED_DEV" 2>/dev/null || true
-  dhclient "$DETECTED_DEV" 2>/dev/null || true
+elif command -v networkctl >/dev/null 2>&1; then
+  echo "  Renewing DHCP lease via networkctl on $DETECTED_DEV..."
+  networkctl renew "$DETECTED_DEV" 2>/dev/null || true
+elif systemctl is-active --quiet NetworkManager; then
+  echo "  Restarting NetworkManager service..."
+  systemctl restart NetworkManager 2>/dev/null || true
 elif systemctl is-active --quiet systemd-networkd; then
   echo "  Restarting systemd-networkd..."
   systemctl restart systemd-networkd 2>/dev/null || true
@@ -384,7 +386,8 @@ else
   echo "  acquired its reserved IP (${RESERVED_IP}) via DHCP."
   echo
   echo "  Please run:"
-  echo "    sudo dhclient -r && sudo dhclient ${DETECTED_DEV}"
+  echo "    sudo nmcli connection modify \$(nmcli -t -f UUID,DEVICE connection show --active | awk -F: '\$2==\"${DETECTED_DEV}\"{print \$1}') ipv4.method auto"
+  echo "    sudo nmcli connection up \$(nmcli -t -f UUID,DEVICE connection show --active | awk -F: '\$2==\"${DETECTED_DEV}\"{print \$1}')"
   echo "  or reboot this machine to complete the network transition."
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo
