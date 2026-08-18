@@ -186,6 +186,7 @@ def make_enrollment_server(
 ) -> DualStackServer:
     """Create enrollment HTTP server bound to the specified interface and port."""
     import time
+    import subprocess
     handler_cls = type(
         "ConfiguredEnrollmentHandler",
         (EnrollmentRequestHandler,),
@@ -196,6 +197,16 @@ def make_enrollment_server(
             return DualStackServer((host, port), handler_cls)
         except OSError as e:
             if attempt < 4 and getattr(e, "errno", None) in (48, 98):
+                if port > 0:
+                    try:
+                        pids = subprocess.run(
+                            ["lsof", "-tiTCP:" + str(port)], capture_output=True, text=True
+                        ).stdout.strip()
+                        if pids:
+                            for pid in pids.split():
+                                subprocess.run(["kill", "-9", pid], capture_output=True)
+                    except Exception:
+                        pass
                 time.sleep(0.5)
                 continue
             raise

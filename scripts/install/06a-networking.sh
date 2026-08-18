@@ -222,6 +222,7 @@ ui_success "Fresh bootstrap session token generated"
 ui_section "Stage 5 — Linux Node One-Time Enrollment"
 
 ENROLL_SERVER_PID=""
+ENROLLMENT_SKIPPED=false
 stop_enrollment_server_process() {
   if [[ -n "$ENROLL_SERVER_PID" ]] && ps -p "$ENROLL_SERVER_PID" >/dev/null 2>&1; then
     kill "$ENROLL_SERVER_PID" 2>/dev/null || true
