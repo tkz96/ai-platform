@@ -40,10 +40,12 @@ fi
 podman_machine_start "$machine_name"
 
 # Verify Podman is functional
-ui_step "Verifying Podman connectivity..."
-if podman info >/dev/null 2>&1; then
-  ui_success "Podman is ready"
-else
-  ui_error "Podman is not responding"
-  exit 1
-fi
+while true; do
+  ui_step "Verifying Podman connectivity..."
+  if podman info >/dev/null 2>&1; then
+    ui_success "Podman is ready"
+    break
+  fi
+
+  ui_recoverable "Podman is not responding." "Check Podman machine status with 'podman machine list' or restart with 'podman machine start $machine_name'.\n  Press Enter to re-check."
+done

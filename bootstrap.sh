@@ -81,7 +81,7 @@ run_dependency_check() {
     if ui_confirm "Install missing tools automatically?"; then
       return 1  # Signal that install phases should run
     else
-      ui_fatal "Cannot continue without required tools."
+      ui_quit_prompt "Cannot continue without required tools." "Install the missing tools listed above, then re-run ./bootstrap.sh"
     fi
   else
     echo
@@ -177,7 +177,7 @@ run_install() {
 
     if ! state_run_phase "$phase_name" "$INSTALL_DIR/$phase_script"; then
       state_rollback "$phase_name"
-      ui_fatal "Installation failed at phase: $phase_name"
+      ui_quit_prompt "Installation failed at phase: $phase_name" "Fix the issue above, then re-run: ./bootstrap.sh"
     fi
   done
 

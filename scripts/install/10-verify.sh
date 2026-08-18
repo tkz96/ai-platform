@@ -15,13 +15,13 @@ if [[ -f "$HOME/.local/bin/uv" ]]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-ui_step "Running health checks on all services..."
-cd "$PROJECT_ROOT"
-uv run python bootstrap.py verify
+while true; do
+  ui_step "Running health checks on all services..."
+  cd "$PROJECT_ROOT"
+  if uv run python bootstrap.py verify; then
+    ui_success "All services are healthy"
+    break
+  fi
 
-if [[ $? -eq 0 ]]; then
-  ui_success "All services are healthy"
-else
-  ui_error "Some services failed health checks"
-  exit 1
-fi
+  ui_recoverable "Some services failed health checks." "Check logs with: ./bootstrap.sh logs\n  Press Enter to retry health checks."
+done

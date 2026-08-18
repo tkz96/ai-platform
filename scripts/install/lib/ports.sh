@@ -176,8 +176,8 @@ port_resolve_conflict() {
       return 1
       ;;
     3)
-      ui_error "Installation cancelled"
-      exit 1
+      ui_info "Installation cancelled by user."
+      exit 0
       ;;
     *)
       ui_error "Invalid choice"

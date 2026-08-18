@@ -17,18 +17,15 @@ fi
 tools=("git" "curl" "jq" "yq" "wget" "dnsmasq")
 
 for tool in "${tools[@]}"; do
-  if command -v "$tool" >/dev/null 2>&1; then
-    ui_success "$tool installed"
-  else
-    ui_step "Installing $tool..."
-    brew install "$tool"
+  while ! command -v "$tool" >/dev/null 2>&1; do
+    ui_step "Installing $tool via Homebrew..."
+    brew install "$tool" || true
     if command -v "$tool" >/dev/null 2>&1; then
-      ui_success "$tool installed"
-    else
-      ui_error "Failed to install $tool"
-      exit 1
+      break
     fi
-  fi
+    ui_recoverable "Failed to install $tool via Homebrew." "Check your internet connection or install $tool manually (brew install $tool), then press Enter to re-check."
+  done
+  ui_success "$tool installed"
 done
 
 ui_success "All system tools installed"

@@ -15,8 +15,7 @@ macos_major=$(echo "$macos_version" | cut -d. -f1)
 if [[ "$macos_major" -ge 14 ]]; then
   ui_success "macOS $macos_version (>= 14)"
 else
-  ui_error "macOS $macos_version detected. Requires macOS 14 or later."
-  exit 1
+  ui_quit_prompt "macOS $macos_version detected. Requires macOS 14 or later." "Upgrade macOS to version 14 or later and re-run ./bootstrap.sh"
 fi
 
 # Check architecture
@@ -28,13 +27,15 @@ else
 fi
 
 # Check disk space
-disk_free=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
-if (( disk_free >= 60 )); then
-  ui_success "Disk space: ${disk_free} GB free (>= 60 GB)"
-else
-  ui_error "Disk space: ${disk_free} GB free. Requires at least 60 GB."
-  exit 1
-fi
+while true; do
+  disk_free=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
+  if (( disk_free >= 60 )); then
+    ui_success "Disk space: ${disk_free} GB free (>= 60 GB)"
+    break
+  else
+    ui_recoverable "Disk space: ${disk_free} GB free. Requires at least 60 GB." "Free up disk space on this volume, then press Enter to re-check."
+  fi
+done
 
 # Check memory
 memory_gb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
@@ -45,13 +46,15 @@ else
 fi
 
 # Check Command Line Tools
-if xcode-select -p >/dev/null 2>&1; then
-  ui_success "Xcode Command Line Tools installed"
-else
-  ui_step "Installing Xcode Command Line Tools..."
-  xcode-select --install 2>/dev/null || true
-  ui_warning "Please complete the Xcode Command Line Tools installation, then re-run ./bootstrap.sh"
-  exit 1
-fi
+while true; do
+  if xcode-select -p >/dev/null 2>&1; then
+    ui_success "Xcode Command Line Tools installed"
+    break
+  else
+    ui_step "Installing Xcode Command Line Tools..."
+    xcode-select --install 2>/dev/null || true
+    ui_recoverable "Xcode Command Line Tools installation required." "Complete the GUI installation dialog, then press Enter to re-check."
+  fi
+done
 
 ui_success "macOS prerequisites satisfied"

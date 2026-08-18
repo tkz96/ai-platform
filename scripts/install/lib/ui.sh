@@ -107,15 +107,81 @@ ui_step() {
   echo -e "  ${CYAN}${SYM_ARROW}${RESET} $1"
 }
 
+ui_recoverable() {
+  local error_msg="$1"
+  local guidance="$2"
+
+  echo
+  echo -e "  ${RED}${BOLD}━━━ Problem Detected ━━━${RESET}"
+  echo -e "  ${RED}${SYM_FAIL}${RESET} ${error_msg}"
+  echo
+  echo -e "  ${BOLD}How to fix:${RESET}"
+  echo -e "  ${guidance}"
+  echo
+  echo -e "  ${DIM}Press Enter to retry  |  Press Q to quit${RESET}"
+
+  while true; do
+    local key=""
+    read -rsn1 key
+    case "$key" in
+      q|Q)
+        echo
+        ui_info "Exiting at user request."
+        exit 0
+        ;;
+      "")  # Enter key
+        return 0
+        ;;
+    esac
+  done
+}
+
+ui_quit_prompt() {
+  local error_msg="$1"
+  local guidance="${2:-}"
+
+  echo
+  echo -e "  ${RED}${BOLD}━━━ Cannot Continue ━━━${RESET}"
+  echo -e "  ${RED}${SYM_FAIL}${RESET} ${error_msg}"
+  if [[ -n "$guidance" ]]; then
+    echo
+    echo -e "  ${BOLD}What you can do:${RESET}"
+    echo -e "  ${guidance}"
+  fi
+  echo
+  echo -e "  ${DIM}Press Q to exit${RESET}"
+
+  while true; do
+    local key=""
+    read -rsn1 key
+    case "$key" in
+      q|Q)
+        echo
+        exit 0
+        ;;
+    esac
+  done
+}
+
+_UI_LIVE_LINES=0
+
+ui_live_status() {
+  local line_count=$#
+  if [[ "${_UI_LIVE_LINES:-0}" -gt 0 ]]; then
+    printf '\033[%dA' "$_UI_LIVE_LINES"
+  fi
+  _UI_LIVE_LINES=$line_count
+  for line in "$@"; do
+    printf '\033[2K%b\n' "$line"
+  done
+}
+
+ui_live_status_clear() {
+  _UI_LIVE_LINES=0
+}
+
 ui_fatal() {
-  echo
-  echo -e "  ${RED}${BOLD}━━━ ERROR ━━━${RESET}"
-  echo -e "  ${RED}${BOLD}${SYM_FAIL}${RESET} $1" >&2
-  echo
-  echo -e "  ${DIM}You can fix the issue and re-run: ./bootstrap.sh${RESET}"
-  echo -e "  ${DIM}Completed phases will be skipped.${RESET}"
-  echo
-  exit 1
+  ui_quit_prompt "$1" "You can fix the issue and re-run: ./bootstrap.sh"
 }
 
 # ── Prompts ─────────────────────────────────────────────────────────────────

@@ -15,13 +15,13 @@ if [[ -f "$HOME/.local/bin/uv" ]]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-ui_step "Validating platform configuration and rendering templates..."
-cd "$PROJECT_ROOT"
-uv run python bootstrap.py render
+while true; do
+  ui_step "Validating platform configuration and rendering templates..."
+  cd "$PROJECT_ROOT"
+  if uv run python bootstrap.py render; then
+    ui_success "Configuration rendered successfully"
+    break
+  fi
 
-if [[ $? -eq 0 ]]; then
-  ui_success "Configuration rendered successfully"
-else
-  ui_error "Configuration rendering failed"
-  exit 1
-fi
+  ui_recoverable "Configuration rendering failed." "Check platform.yaml syntax and template files, then press Enter to retry."
+done

@@ -16,12 +16,9 @@ if [[ "$(uname -m)" == "arm64" ]] && [[ -f /opt/homebrew/bin/brew ]]; then
 fi
 
 # Install uv
-if command -v uv >/dev/null 2>&1; then
-  uv_version=$(uv --version | awk '{print $2}')
-  ui_success "uv $uv_version already installed"
-else
+while ! command -v uv >/dev/null 2>&1; do
   ui_step "Installing uv..."
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  curl -LsSf https://astral.sh/uv/install.sh | sh || true
 
   # Add uv to PATH
   if [[ -f "$HOME/.local/bin/uv" ]]; then
@@ -29,24 +26,25 @@ else
   fi
 
   if command -v uv >/dev/null 2>&1; then
-    uv_version=$(uv --version | awk '{print $2}')
-    ui_success "uv $uv_version installed"
-  else
-    ui_error "uv installation failed"
-    exit 1
+    break
   fi
-fi
+
+  ui_recoverable "uv installation failed." "Check your internet connection or install uv manually (curl -LsSf https://astral.sh/uv/install.sh | sh), then press Enter to re-check."
+done
+
+uv_version=$(uv --version | awk '{print $2}')
+ui_success "uv $uv_version installed"
 
 # Sync project dependencies
 ui_section "Project Dependencies"
 
-ui_step "Syncing project dependencies with uv..."
-cd "$PROJECT_ROOT"
-uv sync
+while true; do
+  ui_step "Syncing project dependencies with uv..."
+  cd "$PROJECT_ROOT"
+  if uv sync; then
+    ui_success "Project dependencies synced"
+    break
+  fi
 
-if [[ $? -eq 0 ]]; then
-  ui_success "Project dependencies synced"
-else
-  ui_error "Failed to sync project dependencies"
-  exit 1
-fi
+  ui_recoverable "Failed to sync project dependencies with uv." "Check your network connection or run 'uv sync' in the project directory, then press Enter to retry."
+done
