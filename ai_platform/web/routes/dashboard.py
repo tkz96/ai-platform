@@ -7,15 +7,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from platform.config import resolve_platform
-from platform.diagnostics import DiagnosticResult, redact_text
-from platform.nodes import NodeRegistryManager
-from platform.probe import probe_http, probe_tcp
-from platform.service_manager import ServiceManager
-
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+
+from ai_platform.config import resolve_platform
+from ai_platform.diagnostics import DiagnosticResult, redact_text
+from ai_platform.nodes import NodeRegistryManager
+from ai_platform.probe import probe_http, probe_tcp
+from ai_platform.service_manager import ServiceManager
 
 router = APIRouter()
 
@@ -46,16 +46,16 @@ def get_dashboard(request: Request) -> HTMLResponse:
     try:
         resolved = resolve_platform(PROJECT_ROOT)
         platform_info = {
-            "name": resolved.platform.name,
-            "domain": resolved.platform.domain,
-            "default_model": resolved.platform.default_model,
-            "subnet": resolved.platform.network.subnet,
-            "mac_ip": resolved.platform.network.mac_ip,
-            "node_ip_start": resolved.platform.network.node_ip_start,
-            "dhcp_pool_start": resolved.platform.network.dhcp_pool_start,
-            "dhcp_pool_end": resolved.platform.network.dhcp_pool_end,
+            "name": resolved.config.name,
+            "domain": resolved.config.domain,
+            "default_model": resolved.config.default_model,
+            "subnet": resolved.config.network.subnet,
+            "mac_ip": resolved.config.network.mac_ip,
+            "node_ip_start": resolved.config.network.node_ip_start,
+            "dhcp_pool_start": resolved.config.network.dhcp_pool_start,
+            "dhcp_pool_end": resolved.config.network.dhcp_pool_end,
             "versions": resolved.versions.services,
-            "inference_config": resolved.platform.inference,
+            "inference_config": resolved.config.inference,
         }
     except Exception:
         platform_info = {
@@ -71,7 +71,7 @@ def get_dashboard(request: Request) -> HTMLResponse:
             "inference_config": None,
         }
 
-    from platform.setup import SetupEngine
+    from ai_platform.setup import SetupEngine
 
     setup_engine = SetupEngine(PROJECT_ROOT)
     setup_summary = setup_engine.get_readiness_summary()
@@ -115,13 +115,19 @@ def get_services_partial(
     # Apply search filter
     if search:
         s_lower = search.lower().strip()
-        services = [s for s in services if s_lower in s["name"].lower() or s_lower in s.get("endpoint", "").lower()]
+        services = [
+            s
+            for s in services
+            if s_lower in s["name"].lower() or s_lower in s.get("endpoint", "").lower()
+        ]
 
     # Apply status filter
     if status_filter == "healthy":
         services = [s for s in services if s.get("passed")]
     elif status_filter == "unhealthy":
-        services = [s for s in services if not s.get("passed") and not s["status"].startswith("STOPPED")]
+        services = [
+            s for s in services if not s.get("passed") and not s["status"].startswith("STOPPED")
+        ]
     elif status_filter == "stopped":
         services = [s for s in services if s["status"].startswith("STOPPED")]
 
@@ -151,14 +157,80 @@ def get_health_matrix(request: Request) -> HTMLResponse:
     import concurrent.futures
 
     targets = [
-        {"name": "Caddy (Gateway)", "host": "127.0.0.1", "port": 8080, "type": "HTTP", "url": "http://127.0.0.1:8080"},
-        {"name": "LiteLLM (API Proxy)", "host": "127.0.0.1", "port": 4000, "type": "HTTP", "url": "http://127.0.0.1:4000/health"},
-        {"name": "Langfuse (Telemetry)", "host": "127.0.0.1", "port": 3000, "type": "HTTP", "url": "http://127.0.0.1:3000/api/public/health"},
-        {"name": "Postgres (Relational DB)", "host": "127.0.0.1", "port": 5432, "type": "TCP", "url": None},
-        {"name": "ClickHouse (Analytics)", "host": "127.0.0.1", "port": 8123, "type": "HTTP", "url": "http://127.0.0.1:8123/ping"},
-        {"name": "Redis (Cache & Queue)", "host": "127.0.0.1", "port": 6379, "type": "TCP", "url": None},
-        {"name": "llama-server (Inference 10.42.0.2)", "host": "10.42.0.2", "port": 8080, "type": "HTTP", "url": "http://10.42.0.2:8080/health"},
+        {
+            "name": "Caddy (Gateway)",
+            "host": "127.0.0.1",
+            "port": 8080,
+            "type": "HTTP",
+            "url": "http://127.0.0.1:8080",
+        },
+        {
+            "name": "LiteLLM (API Proxy)",
+            "host": "127.0.0.1",
+            "port": 4000,
+            "type": "HTTP",
+            "url": "http://127.0.0.1:4000/health",
+        },
+        {
+            "name": "Langfuse (Telemetry)",
+            "host": "127.0.0.1",
+            "port": 3000,
+            "type": "HTTP",
+            "url": "http://127.0.0.1:3000/api/public/health",
+        },
+        {
+            "name": "Postgres (Relational DB)",
+            "host": "127.0.0.1",
+            "port": 5432,
+            "type": "TCP",
+            "url": None,
+        },
+        {
+            "name": "ClickHouse (Analytics)",
+            "host": "127.0.0.1",
+            "port": 8123,
+            "type": "HTTP",
+            "url": "http://127.0.0.1:8123/ping",
+        },
+        {
+            "name": "Redis (Cache & Queue)",
+            "host": "127.0.0.1",
+            "port": 6379,
+            "type": "TCP",
+            "url": None,
+        },
     ]
+
+    try:
+        from ai_platform.nodes import load_registry
+
+        reg = load_registry(PROJECT_ROOT)
+        for _node_id, node in reg.nodes.items():
+            targets.append(
+                {
+                    "name": f"llama-server ({node.hostname} {node.reserved_ip})",
+                    "host": node.reserved_ip,
+                    "port": 8080,
+                    "type": "HTTP",
+                    "url": f"http://{node.reserved_ip}:8080/health",
+                }
+            )
+    except Exception:
+        pass
+
+    if not any("llama-server" in t["name"] for t in targets):
+        resolved_cfg = resolve_platform(PROJECT_ROOT)
+        inf_host = resolved_cfg.config.inference.host
+
+        targets.append(
+            {
+                "name": f"llama-server ({inf_host})",
+                "host": inf_host,
+                "port": 8080,
+                "type": "HTTP",
+                "url": f"http://{inf_host}:8080/health",
+            }
+        )
 
     def _probe_target(t: dict[str, Any]) -> dict[str, Any]:
         if t["type"] == "HTTP" and t["url"]:
@@ -178,7 +250,9 @@ def get_health_matrix(request: Request) -> HTMLResponse:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets) or 1) as executor:
         future_to_idx = {executor.submit(_probe_target, t): i for i, t in enumerate(targets)}
-        results_by_idx = {future_to_idx[f]: f.result() for f in concurrent.futures.as_completed(future_to_idx)}
+        results_by_idx = {
+            future_to_idx[f]: f.result() for f in concurrent.futures.as_completed(future_to_idx)
+        }
 
     probes = [results_by_idx[i] for i in range(len(targets))]
 
@@ -197,6 +271,13 @@ def service_action(
 ) -> HTMLResponse | JSONResponse:
     """Execute service lifecycle action (launch, stop, restart)."""
     sm = _get_service_manager()
+    from ai_platform.service_manager import ALLOWED_SERVICES
+
+    if name not in ALLOWED_SERVICES and name != "podman":
+        return JSONResponse(status_code=400, content={"error": f"Invalid service name: '{name}'"})
+
+    if action not in ("launch", "stop", "restart"):
+        return JSONResponse(status_code=400, content={"error": f"Invalid action: '{action}'"})
 
     try:
         if action == "launch":
@@ -205,8 +286,6 @@ def service_action(
             diag = sm.stop_service(name)
         elif action == "restart":
             diag = sm.restart_service(name)
-        else:
-            return JSONResponse(status_code=400, content={"error": f"Invalid action: {action}"})
     except Exception as e:
         diag = DiagnosticResult(
             operation=f"{action}:{name}",
@@ -333,11 +412,26 @@ def test_completion(
     temperature: float = Form(default=0.7),
     max_tokens: int = Form(default=64),
 ) -> HTMLResponse:
-    """HTMX endpoint to test real LLM inference completion and return live response metrics."""
-    endpoint_url = "http://127.0.0.1:4000/v1/chat/completions" if target == "litellm" else "http://10.42.0.2:8080/v1/chat/completions"
+    resolved = resolve_platform(PROJECT_ROOT)
+    default_model = resolved.config.default_model
+
+    if target == "litellm":
+        endpoint_url = "http://127.0.0.1:4000/v1/chat/completions"
+    else:
+        # Determine host from target or NodeRegistry
+        inf_host = resolved.config.inference.host
+        try:
+            from ai_platform.nodes import load_registry
+
+            reg = load_registry(PROJECT_ROOT)
+            if target in reg.nodes:
+                inf_host = reg.nodes[target].reserved_ip
+        except Exception:
+            pass
+        endpoint_url = f"http://{inf_host}:8080/v1/chat/completions"
 
     payload = {
-        "model": "qwen3.6-35b-a3b",
+        "model": default_model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
         "max_tokens": max_tokens,

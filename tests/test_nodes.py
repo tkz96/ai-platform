@@ -1,8 +1,11 @@
 import json
 import urllib.request
 from pathlib import Path
-from platform.enrollment import make_enrollment_server
-from platform.nodes import (
+
+import pytest
+
+from ai_platform.enrollment import make_enrollment_server
+from ai_platform.nodes import (
     GPUInfo,
     HardwareSpecs,
     ModelAssignment,
@@ -20,8 +23,6 @@ from platform.nodes import (
     save_registry,
     sync_known_hosts,
 )
-
-import pytest
 
 
 def test_normalize_mac() -> None:
@@ -352,7 +353,7 @@ def test_enrollment_server_http_flow(tmp_path: Path) -> None:
 
 
 def test_node_registry_manager_direct(tmp_path: Path) -> None:
-    from platform.nodes import NodeRegistryManager
+    from ai_platform.nodes import NodeRegistryManager
 
     manager = NodeRegistryManager(tmp_path)
     # Empty load

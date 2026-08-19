@@ -1,9 +1,10 @@
 from pathlib import Path
-from platform.lifecycle import PlatformLifecycle
-from platform.runner import ComposeRunner
 from unittest.mock import MagicMock
 
 import pytest
+
+from ai_platform.lifecycle import PlatformLifecycle
+from ai_platform.runner import ComposeRunner
 
 
 def test_lifecycle_render_and_deploy(tmp_path: Path) -> None:

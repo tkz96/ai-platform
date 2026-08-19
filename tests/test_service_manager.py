@@ -1,7 +1,8 @@
 from pathlib import Path
-from platform.service_manager import ALLOWED_SERVICES, ServiceManager
 
 import pytest
+
+from ai_platform.service_manager import ALLOWED_SERVICES, ServiceManager
 
 PROJECT_ROOT = Path(__file__).parent.parent
 

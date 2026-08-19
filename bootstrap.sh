@@ -578,7 +578,7 @@ run_connect_inference() {
 run_ui() {
   ui_header "AI Platform Control Plane Web UI"
   ui_info "Starting Web UI server on http://127.0.0.1:8888..."
-  (cd "$PROJECT_ROOT" && uv run uvicorn platform.web.app:app --host 127.0.0.1 --port 8888)
+  (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888)
 }
 
 # ── Destroy ────────────────────────────────────────────────────────────────
@@ -692,7 +692,7 @@ run_bootstrap_default() {
   (sleep 1.2 && open "http://127.0.0.1:8888" 2>/dev/null || true) &
 
   # Start FastAPI Uvicorn server in foreground
-  (cd "$PROJECT_ROOT" && uv run uvicorn platform.web.app:app --host 127.0.0.1 --port 8888)
+  (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888)
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────

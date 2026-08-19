@@ -329,13 +329,14 @@ class NodeRegistryManager:
         hosts_tmp.replace(hosts_file)
 
         # 2. Signal dnsmasq SIGHUP
-        pid_file = self.state_dir / "dnsmasq.pid"
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, signal.SIGHUP)
-            except Exception:
-                pass
+        for pid_path in [Path("/tmp/ai-platform-dnsmasq.pid"), self.state_dir / "dnsmasq.pid"]:
+            if pid_path.exists():
+                try:
+                    pid = int(pid_path.read_text().strip())
+                    os.kill(pid, signal.SIGHUP)
+                    break
+                except Exception:
+                    pass
 
         # 3. Update known_hosts
         sync_known_hosts(self.root_dir, registry)

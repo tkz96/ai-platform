@@ -1,5 +1,9 @@
 from pathlib import Path
-from platform.config import (
+
+import pytest
+from pydantic import ValidationError
+
+from ai_platform.config import (
     InferenceConfig,
     PlatformConfig,
     ServiceManifest,
@@ -8,9 +12,6 @@ from platform.config import (
     resolve_platform,
     validate_platform,
 )
-
-import pytest
-from pydantic import ValidationError
 
 
 def test_load_platform_config(tmp_path: Path) -> None:
@@ -171,3 +172,14 @@ INFERENCE_SERVICE_USER=ai-runner
     assert cfg4.inference.host == "10.42.0.30"
     assert cfg4.inference.port == 9000
     assert cfg4.inference.model_path == "/runtime/models/qwen.gguf"
+
+
+def test_stdlib_platform_import() -> None:
+    """Ensure standard library platform imports without collision with ai_platform."""
+    import platform as stdlib_platform
+
+    assert hasattr(stdlib_platform, "system")
+    assert hasattr(stdlib_platform, "machine")
+    assert hasattr(stdlib_platform, "python_version")
+    assert stdlib_platform.__name__ == "platform"
+    assert "ai_platform" not in getattr(stdlib_platform, "__file__", "")

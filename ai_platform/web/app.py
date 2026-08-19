@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from platform.web.routes.dashboard import router as dashboard_router
-from platform.web.routes.setup import router as setup_router
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+
+from ai_platform.web.routes.dashboard import router as dashboard_router
+from ai_platform.web.routes.setup import router as setup_router
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 static_dir = PROJECT_ROOT / "templates" / "web" / "static"
@@ -29,4 +30,4 @@ def create_app() -> FastAPI:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("platform.web.app:app", host="127.0.0.1", port=8888, reload=True)
+    uvicorn.run("ai_ai_platform.web.app:app", host="127.0.0.1", port=8888, reload=True)

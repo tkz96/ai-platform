@@ -10,18 +10,14 @@
   
   <title>{% block title %}AI Platform — Control Plane & Cluster Deck{% endblock %}</title>
 
-  <!-- Google Fonts: Outfit (Display/Headlines), Plus Jakarta Sans (Body), JetBrains Mono (Code/Data) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-
   <!-- Core Dashboard Design System Stylesheet -->
   <link rel="stylesheet" href="/static/css/dashboard.css">
 
-  <!-- HTMX, SSE Extension & Alpine.js -->
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
-  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Local Vendored HTMX, SSE Extension & Alpine.js -->
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/sse.js"></script>
+  <script defer src="/static/js/alpine.min.js"></script>
+
 
   <script>
     // Global toast notifications handler

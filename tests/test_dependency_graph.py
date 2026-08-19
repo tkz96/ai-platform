@@ -1,6 +1,6 @@
-from platform.config import ServiceManifest, resolve_dependency_order
-
 import pytest
+
+from ai_platform.config import ServiceManifest, resolve_dependency_order
 
 
 def test_dependency_resolution_simple() -> None:

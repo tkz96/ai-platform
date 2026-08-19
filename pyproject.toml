@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Self-hosted AI Platform"
 requires-python = ">=3.12"
 
+[project.scripts]
+ai-platform = "ai_platform.cli:app"
+
 
 dependencies = ["fastapi>=0.110.0", "jinja2", "pydantic>=2.0.0", "python-multipart>=0.0.9", "pyyaml", "rich", "typer", "uvicorn>=0.28.0"]
 
@@ -24,7 +27,8 @@ exclude = [".venv", "data", "backups", "state"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-ignore = ["B008"]
+ignore = ["B008", "E501"]
+
 
 
 [tool.ruff.format]

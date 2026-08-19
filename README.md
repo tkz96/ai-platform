@@ -58,9 +58,11 @@ This repository provisions and manages a two-node AI platform with declarative Y
 ├── versions.yaml             # Service versions (source)
 ├── services/                 # Service manifests (source)
 ├── templates/                # Jinja2 templates (source)
-├── platform/                 # Python domain layer
+├── ai_platform/              # Python domain layer
 │   ├── diagnostics.py        #   DiagnosticResult contract & secret redaction
 │   ├── service_manager.py    #   Shared ServiceManager (CLI + Web UI)
+│   ├── setup/                #   Structured setup engine (phases, readiness, audit)
+│   ├── web/                  #   FastAPI Web UI, routes, security, partials
 │   ├── provisioner.py        #   SSH-based node provisioning with timeouts
 │   ├── enrollment.py         #   HTTP enrollment server for Linux nodes
 │   ├── nodes.py              #   Node registry data model
@@ -77,7 +79,7 @@ This repository provisions and manages a two-node AI platform with declarative Y
 │   │   └── ...
 │   └── inference/
 │       └── node-enroll.sh    # Zero-touch Linux enrollment script
-├── tests/                    # Automated tests (52 passing)
+├── tests/                    # Automated unit & integration tests (76 passing)
 ├── docs/                     # Architecture, operations, decisions
 ├── .github/workflows/        # CI pipeline
 ├── configs/                  # GENERATED — do not edit
@@ -85,6 +87,7 @@ This repository provisions and manages a two-node AI platform with declarative Y
 ├── Makefile                  # Developer commands
 └── pyproject.toml            # Python project metadata
 ```
+
 
 > [!CAUTION]
 > `compose.yaml` and `configs/` are **generated files**. Never edit them directly.

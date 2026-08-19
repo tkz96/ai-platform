@@ -30,7 +30,7 @@ def test_stop_mac_dhcp_server_verifies_process_identity():
 
 def test_start_mac_dhcp_server_captures_stderr():
     content = NETWORKING_LIB.read_text()
-    assert "2>\"$err_file\"" in content or "2>\"$state_dir/dnsmasq.err\"" in content
+    assert '2>"$err_file"' in content or '2>"$state_dir/dnsmasq.err"' in content
     assert "render_diagnostic_box" in content
 
 

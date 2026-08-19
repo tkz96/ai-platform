@@ -1,6 +1,6 @@
-from platform.web.app import app
-
 from fastapi.testclient import TestClient
+
+from ai_platform.web.app import app
 
 client = TestClient(app)
 
@@ -24,6 +24,17 @@ def test_static_css_endpoint():
     response = client.get("/static/css/dashboard.css")
     assert response.status_code == 200
     assert "--bg-canvas" in response.text
+
+
+def test_static_js_vendor_endpoints():
+    for asset in ["htmx.min.js", "sse.js", "alpine.min.js"]:
+        res = client.get(f"/static/js/{asset}")
+        assert res.status_code == 200
+        assert len(res.text) > 100
+
+    base_resp = client.get("/")
+    assert "unpkg.com" not in base_resp.text
+    assert "fonts.googleapis.com" not in base_resp.text
 
 
 def test_services_partial_endpoint():
@@ -84,7 +95,12 @@ def test_service_action_invalid():
 def test_completion_endpoint():
     response = client.post(
         "/api/ui/test-completion",
-        data={"prompt": "Hello test", "target": "litellm", "temperature": "0.7", "max_tokens": "16"},
+        data={
+            "prompt": "Hello test",
+            "target": "litellm",
+            "temperature": "0.7",
+            "max_tokens": "16",
+        },
     )
     assert response.status_code == 200
     assert "Generated Response" in response.text or "Inference Offline" in response.text

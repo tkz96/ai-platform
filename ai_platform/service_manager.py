@@ -3,11 +3,12 @@ from __future__ import annotations
 import subprocess
 import time
 from pathlib import Path
-from platform.config import resolve_platform
-from platform.diagnostics import DiagnosticResult
-from platform.probe import probe_http, probe_tcp
-from platform.runner import ComposeRunner
 from typing import Any
+
+from ai_platform.config import resolve_platform
+from ai_platform.diagnostics import DiagnosticResult
+from ai_platform.probe import probe_http, probe_tcp
+from ai_platform.runner import ComposeRunner
 
 ALLOWED_SERVICES = {
     "postgres",
@@ -68,11 +69,21 @@ class ServiceManager:
             }
 
         import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(resolved.dependency_order) or 1) as executor:
-            future_to_name = {executor.submit(_probe_one, name): name for name in resolved.dependency_order}
-            results_by_name = {future_to_name[f]: f.result() for f in concurrent.futures.as_completed(future_to_name)}
 
-        return [results_by_name[name] for name in resolved.dependency_order if name in results_by_name]
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(resolved.dependency_order) or 1
+        ) as executor:
+            future_to_name = {
+                executor.submit(_probe_one, name): name for name in resolved.dependency_order
+            }
+            results_by_name = {
+                future_to_name[f]: f.result()
+                for f in concurrent.futures.as_completed(future_to_name)
+            }
+
+        return [
+            results_by_name[name] for name in resolved.dependency_order if name in results_by_name
+        ]
 
     def launch_service(self, name: str, timeout: int = 30) -> DiagnosticResult:
         """Launch a service, wait for health probe, and return final status.
@@ -89,15 +100,21 @@ class ServiceManager:
                 exit_code=res.returncode,
                 stdout=res.stdout,
                 stderr=res.stderr,
-                detected_state={"status": "STARTED+HEALTHY" if res.returncode == 0 else "FAILED_TO_START"},
-                recommendation="Check podman machine status using 'podman machine list'" if res.returncode != 0 else "",
+                detected_state={
+                    "status": "STARTED+HEALTHY" if res.returncode == 0 else "FAILED_TO_START"
+                },
+                recommendation="Check podman machine status using 'podman machine list'"
+                if res.returncode != 0
+                else "",
             ).redact()
 
         # Compose service launch
         cmd_str = f"podman compose up -d {name}"
         try:
             compose_cmd = self.runner.get_compose_cmd() + ["up", "-d", name]
-            subprocess.run(compose_cmd, cwd=self.root_dir, check=True, capture_output=True, text=True)
+            subprocess.run(
+                compose_cmd, cwd=self.root_dir, check=True, capture_output=True, text=True
+            )
         except Exception as e:
             return DiagnosticResult(
                 operation=f"launch_service:{name}",
@@ -150,8 +167,14 @@ class ServiceManager:
             command=cmd_str,
             exit_code=0 if healthy else 1,
             stdout=f"Service {name} deployed. Probe status: {last_status}",
-            detected_state={"status": final_status, "endpoint": health_url, "probe_passed": healthy},
-            recommendation=f"Check logs if UNHEALTHY: ./bootstrap.sh logs {name}" if not healthy else "",
+            detected_state={
+                "status": final_status,
+                "endpoint": health_url,
+                "probe_passed": healthy,
+            },
+            recommendation=f"Check logs if UNHEALTHY: ./bootstrap.sh logs {name}"
+            if not healthy
+            else "",
             is_retryable=not healthy,
         ).redact()
 
@@ -179,7 +202,9 @@ class ServiceManager:
     def restart_service(self, name: str) -> DiagnosticResult:
         """Restart a specific platform service."""
         self._validate_service_name(name)
-        self.stop_service(name)
+        stop_res = self.stop_service(name)
+        if stop_res.exit_code != 0:
+            return stop_res
         return self.launch_service(name)
 
     def get_logs(self, name: str, tail: int = 100) -> str:
@@ -243,7 +268,9 @@ class ServiceManager:
                     "udp_67_owner": udp_67_owner,
                     "pf_nat_rules": pf_state,
                 },
-                recommendation="Run ./bootstrap.sh connect-inference to restart DHCP server" if not is_ok else "DHCP server & NAT gateway operating normally",
+                recommendation="Run ./bootstrap.sh connect-inference to restart DHCP server"
+                if not is_ok
+                else "DHCP server & NAT gateway operating normally",
                 is_retryable=not is_ok,
             ).redact()
 
@@ -263,7 +290,9 @@ class ServiceManager:
                     "podman_responsive": is_ok,
                     "machine_list": mach_proc.stdout.strip(),
                 },
-                recommendation="Run 'podman machine start' to initialize VM" if not is_ok else "Podman machine active",
+                recommendation="Run 'podman machine start' to initialize VM"
+                if not is_ok
+                else "Podman machine active",
                 is_retryable=not is_ok,
             ).redact()
 
@@ -283,6 +312,8 @@ class ServiceManager:
             stdout=f"Service {name} endpoint: {endpoint}",
             stderr=logs,
             detected_state={"endpoint": endpoint, "is_healthy": healthy},
-            recommendation=f"Service {name} is operating normally" if healthy else f"Restart container using ./bootstrap.sh restart {name}",
+            recommendation=f"Service {name} is operating normally"
+            if healthy
+            else f"Restart container using ./bootstrap.sh restart {name}",
             is_retryable=not healthy,
         ).redact()

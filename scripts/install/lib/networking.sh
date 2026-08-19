@@ -253,6 +253,38 @@ start_mac_dhcp_server() {
   return 1
 }
 
+restart_mac_dhcp_server() {
+  local iface="$1"
+  stop_mac_dhcp_server
+  start_mac_dhcp_server "$iface"
+}
+
+diagnose_mac_dhcp_server() {
+  local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+  local conf_file="$root_dir/state/dnsmasq.conf"
+  local pid_file="/tmp/ai-platform-dnsmasq.pid"
+
+  echo "=== dnsmasq Diagnostic Check ==="
+  if [[ -f "$pid_file" ]]; then
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && sudo kill -0 "$pid" 2>/dev/null; then
+      echo "[OK] dnsmasq PID $pid is running."
+      ps -p "$pid" -o pid,user,command=
+    else
+      echo "[WARN] PID file exists ($pid_file) but process $pid is not active."
+    fi
+  else
+    echo "[WARN] No PID file at $pid_file."
+  fi
+
+  local port67_owner
+  port67_owner=$(sudo lsof -nP -iUDP:67 2>/dev/null || echo "none")
+  echo "UDP/67 Owner:"
+  echo "$port67_owner"
+}
+
+
 reload_mac_dhcp_reservations() {
   local root_dir="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
   local conf_file="$root_dir/state/dnsmasq.conf"

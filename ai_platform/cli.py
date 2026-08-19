@@ -1,11 +1,12 @@
 import json
 import sys
 from pathlib import Path
-from platform.lifecycle import PlatformLifecycle
-from platform.verify import format_health_table, verify_platform
 
 import typer
 from rich.console import Console
+
+from ai_platform.lifecycle import PlatformLifecycle
+from ai_platform.verify import format_health_table, verify_platform
 
 app = typer.Typer(
     name="ai-platform",
@@ -29,7 +30,7 @@ def render(
     try:
         lifecycle = PlatformLifecycle(target_root)
         if dry_run:
-            from platform.config import resolve_platform
+            from ai_platform.config import resolve_platform
 
             resolve_platform(target_root)
             console.print("[bold green]✓ Configuration validated successfully.[/bold green]")
@@ -74,7 +75,7 @@ def status(
     target_root = root or ROOT_DIR
     if not json_output:
         console.print("[bold blue]Validating configuration...[/bold blue]")
-    from platform.config import resolve_platform
+    from ai_platform.config import resolve_platform
 
     resolved = resolve_platform(target_root)
     if not json_output:
@@ -186,9 +187,9 @@ def list_nodes_cmd(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """List all enrolled inference nodes and their runtime state."""
-    from platform.nodes import load_registry
-
     from rich.table import Table
+
+    from ai_platform.nodes import load_registry
 
     target_root = root or ROOT_DIR
     registry = load_registry(target_root)
@@ -244,8 +245,9 @@ def enroll_nodes_cmd(
 ) -> None:
     """Start the node enrollment listener on Mac Mini."""
     import time
-    from platform.enrollment import get_session_token, run_enrollment_listener_background
-    from platform.nodes import load_registry
+
+    from ai_platform.enrollment import get_session_token, run_enrollment_listener_background
+    from ai_platform.nodes import load_registry
 
     target_root = root or ROOT_DIR
     token = get_session_token(target_root)
@@ -289,8 +291,8 @@ def provision_nodes_cmd(
     ),
 ) -> None:
     """Remotely provision enrolled Linux inference nodes over SSH."""
-    from platform.nodes import load_registry
-    from platform.provisioner import provision_all_nodes, provision_single_node
+    from ai_platform.nodes import load_registry
+    from ai_platform.provisioner import provision_all_nodes, provision_single_node
 
     target_root = root or ROOT_DIR
     registry = load_registry(target_root)

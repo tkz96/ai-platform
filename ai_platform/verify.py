@@ -1,11 +1,12 @@
 from pathlib import Path
-from platform.config import ResolvedPlatform, ServiceManifest
-from platform.nodes import NodeRecord, load_registry
-from platform.probe import probe_http, probe_inference_node, probe_tcp
 from typing import Any
 
 from rich.console import Group
 from rich.table import Table
+
+from ai_platform.config import ResolvedPlatform, ServiceManifest
+from ai_platform.nodes import NodeRecord, load_registry
+from ai_platform.probe import probe_http, probe_inference_node, probe_tcp
 
 
 def check_endpoint(url: str, timeout: int = 5) -> tuple[bool, str]:
@@ -66,7 +67,7 @@ def verify_remote_inference(
             results.append(verify_node(node))
         return results
 
-    # Fallback to single-node from platform.yaml if no nodes in registry yet
+    # Fallback to single-node from ai_platform.yaml if no nodes in registry yet
     inf = resolved.config.inference
     tcp_passed, tcp_msg = check_tcp_port(inf.host, inf.port)
     health_url = f"{inf.protocol}://{inf.host}:{inf.port}{inf.health_endpoint}"
@@ -88,17 +89,64 @@ def verify_remote_inference(
     ]
 
 
+def verify_e2e_completion(model_name: str = "default") -> dict[str, Any]:
+    """Test LiteLLM /v1/chat/completions end-to-end to verify actual model backend routing."""
+    import json
+    import time
+    import urllib.request
+
+    url = "http://127.0.0.1:4000/v1/chat/completions"
+    payload = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": "E2E verification ping"}],
+        "max_tokens": 10,
+    }
+    start = time.perf_counter()
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer sk-platform-test",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            latency_ms = round((time.perf_counter() - start) * 1000.0, 1)
+            return {
+                "passed": resp.status == 200,
+                "status": f"HTTP {resp.status} ({latency_ms}ms)",
+                "latency_ms": latency_ms,
+            }
+    except Exception as e:
+        return {
+            "passed": False,
+            "status": f"FAILED ({e})",
+            "latency_ms": None,
+        }
+
+
 def verify_platform(resolved: ResolvedPlatform, root_dir: Path | None = None) -> dict[str, Any]:
+    target_root = root_dir or Path.cwd()
     local_results: list[dict[str, Any]] = []
     for service_name in resolved.dependency_order:
         manifest = resolved.services[service_name]
         local_results.append(verify_service(service_name, manifest))
 
-    remote_results = verify_remote_inference(resolved, root_dir=root_dir)
+    remote_results = verify_remote_inference(resolved, root_dir=target_root)
+
+    # E2E verification
+    e2e_result = verify_e2e_completion(resolved.platform.default_model)
+
+    all_local_ok = all(r["passed"] for r in local_results)
+    all_remote_ok = all(r.get("passed", False) for r in remote_results) if remote_results else True
 
     return {
         "local_services": local_results,
         "remote_inference": remote_results,
+        "e2e_completion": e2e_result,
+        "is_ready": all_local_ok and all_remote_ok,
     }
 
 

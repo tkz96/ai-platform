@@ -2,13 +2,14 @@ import http.server
 import json
 import socket
 import threading
-from platform.nodes import (
+
+from ai_platform.nodes import (
     HardwareSpecs,
     NodeIdentity,
     NodeRecord,
     NodeRuntimeState,
 )
-from platform.probe import probe_http, probe_inference_node, probe_tcp
+from ai_platform.probe import probe_http, probe_inference_node, probe_tcp
 
 
 def test_probe_tcp_open_and_closed() -> None:
@@ -100,7 +101,7 @@ def test_probe_http_status_and_payload() -> None:
 
 
 def test_probe_inference_node_helper() -> None:
-    from platform.nodes import NodeDesiredConfig
+    from ai_platform.nodes import NodeDesiredConfig
 
     node = NodeRecord(
         identity=NodeIdentity(

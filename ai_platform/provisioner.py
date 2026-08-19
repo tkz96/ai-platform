@@ -4,17 +4,18 @@ import datetime
 import subprocess
 import time
 from pathlib import Path
-from platform.config import ResolvedPlatform, resolve_platform
-from platform.nodes import (
+from typing import Any
+
+from ai_platform.config import ResolvedPlatform, resolve_platform
+from ai_platform.nodes import (
     ModelAssignment,
     NodeRecord,
     load_registry,
     save_registry,
     sync_known_hosts,
 )
-from platform.probe import probe_http, probe_tcp
-from platform.renderer import render_node_service_unit
-from typing import Any
+from ai_platform.probe import probe_http, probe_tcp
+from ai_platform.renderer import render_node_service_unit
 
 
 class SSHRunner:
@@ -136,7 +137,9 @@ def provision_single_node(
 
         if res.returncode != 0:
             node.runtime.status = "offline"
-            node.runtime.last_error = f"SSH unreachable at {target_ip}: {res.stderr.strip() or 'Connection timeout'}"
+            node.runtime.last_error = (
+                f"SSH unreachable at {target_ip}: {res.stderr.strip() or 'Connection timeout'}"
+            )
             results["steps"]["ssh"] = "failed"
             return results
 

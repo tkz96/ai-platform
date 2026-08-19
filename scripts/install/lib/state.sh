@@ -125,8 +125,8 @@ state_run_phase() {
     return 0
   fi
 
-  if [[ "$status" == "failed" ]]; then
-    ui_warning "$phase_name previously failed"
+  if [[ "$status" == "failed" || "$status" == "aborted" ]]; then
+    ui_warning "$phase_name previously $status"
     if ! ui_confirm "Retry $phase_name?"; then
       ui_error "Skipping $phase_name"
       return 1
@@ -139,10 +139,16 @@ state_run_phase() {
     state_set_phase "$phase_name" "completed"
     return 0
   else
-    state_set_phase "$phase_name" "failed"
+    local rc=$?
+    if [[ $rc -eq 130 ]]; then
+      state_set_phase "$phase_name" "aborted"
+    else
+      state_set_phase "$phase_name" "failed"
+    fi
     return 1
   fi
 }
+
 
 # ── Rollback ────────────────────────────────────────────────────────────────
 

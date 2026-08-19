@@ -1,8 +1,12 @@
 import asyncio
 from pathlib import Path
+
 from playwright.async_api import async_playwright
 
-ARTIFACT_DIR = Path("/Users/ai-macmini/.gemini/antigravity-ide/brain/a60af437-9fa4-4660-9ce3-1f1875b680f6")
+ARTIFACT_DIR = Path(
+    "/Users/ai-macmini/.gemini/antigravity-ide/brain/a60af437-9fa4-4660-9ce3-1f1875b680f6"
+)
+
 
 async def main():
     async with async_playwright() as p:
@@ -58,6 +62,7 @@ async def main():
 
         await browser.close()
         print("All UI views captured successfully!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

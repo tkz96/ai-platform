@@ -1,10 +1,11 @@
 from pathlib import Path
-from platform.config import ResolvedPlatform, ServiceManifest
-from platform.nodes import NodeRecord, get_healthy_serving_nodes, load_registry
 from typing import Any
 
 import yaml
 from jinja2 import Environment, FileSystemLoader
+
+from ai_platform.config import ResolvedPlatform, ServiceManifest
+from ai_platform.nodes import NodeRecord, get_healthy_serving_nodes, load_registry
 
 
 class IndentedDumper(yaml.Dumper):

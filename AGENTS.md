@@ -8,7 +8,7 @@ This repository contains the infrastructure for self-hosted AI services.
    - `compose.yaml`, `configs/`, `.env`, `secrets/`, and `.install-state` are **GENERATED** artifacts. NEVER edit them directly.
    - Declarative source files belong in `platform.yaml`, `versions.yaml`, `services/*.yaml`, and `templates/*.j2`.
    - Shell installer logic belongs in `bootstrap.sh` and `scripts/install/*.sh`.
-   - Python platform logic belongs in `platform/` and `bootstrap.py`.
+   - Python platform logic belongs in `ai_platform/` and `bootstrap.py`.
    - All infrastructure changes MUST originate from source templates and configuration manifests.
 
 2. **Two-Layer Installation Model**:
@@ -18,7 +18,8 @@ This repository contains the infrastructure for self-hosted AI services.
 
 3. **Configuration-Driven Architecture**:
    - YAML describes **what** the platform should be.
-   - Python (`platform/`) determines **how** it is built.
+   - Python (`ai_platform/`) determines **how** it is built.
+
    - Jinja2 (`templates/`) defines **how configuration is rendered**.
    - Containers execute the resulting infrastructure.
 

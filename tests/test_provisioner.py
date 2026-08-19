@@ -1,5 +1,6 @@
 from pathlib import Path
-from platform.provisioner import provision_all_nodes
+
+from ai_platform.provisioner import provision_all_nodes
 
 PROJECT_ROOT = Path(__file__).parent.parent
 

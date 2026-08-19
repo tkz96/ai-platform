@@ -3,9 +3,10 @@ from __future__ import annotations
 import tarfile
 from datetime import datetime
 from pathlib import Path
-from platform.config import ResolvedPlatform, resolve_platform
-from platform.renderer import render_all
-from platform.runner import ComposeRunner
+
+from ai_platform.config import ResolvedPlatform, resolve_platform
+from ai_platform.renderer import render_all
+from ai_platform.runner import ComposeRunner
 
 
 class PlatformLifecycle:

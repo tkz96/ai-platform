@@ -7,17 +7,21 @@ import os
 import signal
 import threading
 from pathlib import Path
-from platform.nodes import (
+from typing import Any
+
+from ai_platform.nodes import (
     GPUInfo,
     HardwareSpecs,
     NodeRegistryManager,
 )
-from typing import Any
 
 
 def get_session_token(root_dir: Path) -> str:
     """Read the active session token from secrets/enrollment_token or environment."""
-    for path in [root_dir / "secrets" / "enrollment_token", root_dir / "state" / "enrollment_token"]:
+    for path in [
+        root_dir / "secrets" / "enrollment_token",
+        root_dir / "state" / "enrollment_token",
+    ]:
         if path.exists():
             val = path.read_text().strip()
             if val:
@@ -171,13 +175,13 @@ class DualStackServer(http.server.ThreadingHTTPServer):
     allow_reuse_address = True
 
     def server_bind(self) -> None:
+        import contextlib
         import socket
+
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if hasattr(socket, "SO_REUSEPORT"):
-            try:
+            with contextlib.suppress(OSError):
                 self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            except OSError:
-                pass
         super().server_bind()
 
 
@@ -187,6 +191,7 @@ def make_enrollment_server(
     """Create enrollment HTTP server bound to the specified interface and port."""
     import subprocess
     import time
+
     handler_cls = type(
         "ConfiguredEnrollmentHandler",
         (EnrollmentRequestHandler,),

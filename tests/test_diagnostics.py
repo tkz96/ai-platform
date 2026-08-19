@@ -1,10 +1,13 @@
-from platform.diagnostics import DiagnosticResult, redact_text
+from ai_platform.diagnostics import DiagnosticResult, redact_text
 
 
 def test_redact_text_secrets():
     assert redact_text("sk-enroll-1234567890abcdef123456") == "[REDACTED_TOKEN]"
     assert redact_text("POSTGRES_PASSWORD=mysecretpass") == "POSTGRES_PASSWORD=[REDACTED]"
-    assert redact_text("postgresql://postgres:secret123@localhost:5432/db") == "postgresql://[REDACTED]:[REDACTED]@localhost:5432/db"
+    assert (
+        redact_text("postgresql://postgres:secret123@localhost:5432/db")
+        == "postgresql://[REDACTED]:[REDACTED]@localhost:5432/db"
+    )
 
 
 def test_diagnostic_result_redact():
@@ -20,7 +23,7 @@ def test_diagnostic_result_redact():
     )
     redacted = res.redact()
     assert "sk-litellm" not in redacted.command
-    assert "[REDACTED_TOKEN]" in redacted.command
+    assert "[REDACTED]" in redacted.command
     assert "dbpassword123" not in redacted.stdout
     assert "POSTGRES_PASSWORD=[REDACTED]" in redacted.stdout
     assert "sk-enroll" not in redacted.stderr
@@ -37,3 +40,14 @@ def test_diagnostic_result_to_json():
     json_str = res.to_json()
     assert "sk-enroll-1234567890abcdef" not in json_str
     assert "[REDACTED_TOKEN]" in json_str
+
+
+def test_diagnostic_result_fields():
+    res_ok = DiagnosticResult(operation="check_ports", exit_code=0)
+    assert res_ok.status == "success"
+    assert res_ok.severity == "info"
+    assert res_ok.redacted is True
+
+    res_err = DiagnosticResult(operation="connect_db", exit_code=1, stderr="Connection refused")
+    assert res_err.status == "failed"
+    assert res_err.severity == "error"

@@ -1,6 +1,7 @@
 from pathlib import Path
-from platform.config import resolve_platform
-from platform.renderer import generate_compose_dict, render_all
+
+from ai_platform.config import resolve_platform
+from ai_platform.renderer import generate_compose_dict, render_all
 
 
 def test_renderer_real_repo() -> None:
@@ -26,7 +27,7 @@ def test_render_all(tmp_path: Path) -> None:
 
 
 def test_env_file_rendering() -> None:
-    from platform.config import ServiceManifest
+    from ai_platform.config import ServiceManifest
 
     repo_root = Path(__file__).parent.parent
     resolved = resolve_platform(repo_root)
@@ -51,7 +52,7 @@ def test_litellm_template_rendering() -> None:
 
 
 def test_litellm_rendering_multi_node(tmp_path: Path) -> None:
-    from platform.nodes import (
+    from ai_platform.nodes import (
         ModelAssignment,
         NodeDesiredConfig,
         NodeIdentity,
@@ -201,7 +202,7 @@ services: {}
 
 
 def test_systemd_escape() -> None:
-    from platform.renderer import systemd_escape
+    from ai_platform.renderer import systemd_escape
 
     # Ordinary flags and tokens (no escaping needed)
     assert systemd_escape("--fit") == "--fit"
@@ -227,14 +228,14 @@ def test_systemd_escape() -> None:
 
 
 def test_render_node_service_unit(tmp_path: Path) -> None:
-    from platform.nodes import (
+    from ai_platform.nodes import (
         ModelAssignment,
         NodeDesiredConfig,
         NodeIdentity,
         NodeRecord,
         NodeRuntimeState,
     )
-    from platform.renderer import render_node_service_unit
+    from ai_platform.renderer import render_node_service_unit
 
     repo_root = Path(__file__).parent.parent
     resolved = resolve_platform(repo_root)

@@ -6,18 +6,30 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 SECRET_PATTERNS = [
-    # API / Enrollment tokens
+    # Authorization headers
+    (r"(?i)authorization\s*:\s*bearer\s+[^\s'\"]+", "Authorization: Bearer [REDACTED]"),
+    # Enrollment and API tokens
     (r"sk-[a-zA-Z0-9_-]{12,}", "[REDACTED_TOKEN]"),
+    (r"tok_[a-zA-Z0-9_-]{12,}", "[REDACTED_TOKEN]"),
+    (r"(?i)(enrollment_token|session_token)\s*[:=]\s*['\"]?([^\s'\"]+)['\"]?", r"\1=[REDACTED]"),
     # SSH private keys
-    (r"-----BEGIN [A-Z ]+ PRIVATE KEY-----\s*[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----", "[REDACTED_SSH_KEY]"),
-    # Common env secrets
-    (r"(?i)(password|secret|key|token|auth)\s*[:=]\s*['\"]?([^\s'\"]+)['\"]?", r"\1=[REDACTED]"),
+    (
+        r"-----BEGIN [A-Z ]+ PRIVATE KEY-----\s*[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----",
+        "[REDACTED_SSH_KEY]",
+    ),
+    # Common env secrets and key-value assignments
+    (
+        r"(?i)(password|secret|api_key|auth_token|private_key)\s*[:=]\s*['\"]?([^\s'\"]+)['\"]?",
+        r"\1=[REDACTED]",
+    ),
     # Connection URIs with credentials
-    (r"postgresql://[^:]+:[^@]+@", "postgresql://[REDACTED]:[REDACTED]@"),
-    (r"clickhouse://[^:]+:[^@]+@", "clickhouse://[REDACTED]:[REDACTED]@"),
+    (
+        r"(postgresql|postgres|redis|clickhouse|mysql)://[^:]+:[^@]+@",
+        r"\1://[REDACTED]:[REDACTED]@",
+    ),
 ]
 
-SENSITIVE_KEY_PATTERN = re.compile(r"(?i)(password|secret|key|token|auth)")
+SENSITIVE_KEY_PATTERN = re.compile(r"(?i)(password|secret|key|token|auth|pass|jwt|credential)")
 
 
 def redact_text(text: str) -> str:
@@ -46,7 +58,10 @@ def redact_obj(obj: Any, key_context: str = "") -> Any:
 @dataclass
 class DiagnosticResult:
     """Standardized result abstraction for operational commands and health diagnostics."""
+
     operation: str
+    status: str = "success"  # success, warning, failed, blocked, pending
+    severity: str = "info"  # info, warning, error, critical
     command: str = ""
     exit_code: int = 0
     stdout: str = ""
@@ -54,11 +69,21 @@ class DiagnosticResult:
     detected_state: dict[str, Any] = field(default_factory=dict)
     recommendation: str = ""
     is_retryable: bool = True
+    redacted: bool = True
+
+    def __post_init__(self) -> None:
+        """Infer default status/severity from exit code if defaults are used."""
+        if self.exit_code != 0 and self.status == "success":
+            self.status = "failed"
+        if self.exit_code != 0 and self.severity == "info":
+            self.severity = "error"
 
     def redact(self) -> DiagnosticResult:
         """Return a copy of this result with all secrets redacted."""
         return DiagnosticResult(
             operation=redact_text(self.operation),
+            status=self.status,
+            severity=self.severity,
             command=redact_text(self.command),
             exit_code=self.exit_code,
             stdout=redact_text(self.stdout),
@@ -66,6 +91,7 @@ class DiagnosticResult:
             detected_state=redact_obj(self.detected_state),
             recommendation=redact_text(self.recommendation),
             is_retryable=self.is_retryable,
+            redacted=True,
         )
 
     def to_dict(self) -> dict[str, Any]:

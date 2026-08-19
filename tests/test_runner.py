@@ -1,6 +1,7 @@
 from pathlib import Path
-from platform.runner import ComposeRunner
 from unittest.mock import MagicMock, patch
+
+from ai_platform.runner import ComposeRunner
 
 
 def test_compose_runner_custom_bin(tmp_path: Path) -> None:

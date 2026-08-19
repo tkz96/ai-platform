@@ -7,11 +7,13 @@ retrieving empirical checklist statuses, and performing system-wide health audit
 from __future__ import annotations
 
 from pathlib import Path
-from platform.setup import SetupEngine
 
-from fastapi import APIRouter, Form, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+
+from ai_platform.setup import SetupEngine, get_canonical_phase_definitions
+from ai_platform.web.security import validate_action_safety
 
 router = APIRouter()
 
@@ -51,6 +53,13 @@ def stream_setup_execution(
     """Server-Sent Events (SSE) endpoint streaming real-time terminal stdout/stderr for phase execution."""
     engine = _get_setup_engine()
 
+    valid_ids = {p.id for p in get_canonical_phase_definitions()} | {"all"}
+    if phase not in valid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid phase ID '{phase}'. Allowed phase IDs: {sorted(list(valid_ids))}",
+        )
+
     if phase == "all":
         generator = engine.stream_all_phases_execution()
     else:
@@ -83,15 +92,24 @@ def get_audit_report_partial(request: Request) -> HTMLResponse:
 @router.post("/api/setup/reset-phase")
 def reset_phase_state(
     phase_id: str = Form(...),
+    confirm: bool = Form(default=True),
 ) -> JSONResponse:
     """Reset / clear state for a specific phase."""
+    valid_ids = {p.id for p in get_canonical_phase_definitions()}
+    if phase_id not in valid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid phase ID '{phase_id}'. Allowed phase IDs: {sorted(list(valid_ids))}",
+        )
+
+    validate_action_safety("reset-phase", {"confirm": confirm})
+
     engine = _get_setup_engine()
-    # If state file exists, attempt clean reset
     state_file = engine.state_file
     if state_file.exists():
         try:
             lines = state_file.read_text().splitlines()
-            filtered = [l for l in lines if not l.startswith(f"{phase_id}:")]
+            filtered = [line for line in lines if not line.startswith(f"{phase_id}:")]
             state_file.write_text("\n".join(filtered) + "\n")
         except Exception:
             pass

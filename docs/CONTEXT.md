@@ -65,7 +65,7 @@ It prepares the machine, then delegates to `bootstrap.py` for platform operation
 
 Follow these rules when modifying this repository:
 
-1. Edit source files only (`platform.yaml`, `versions.yaml`, `services/*.yaml`, `templates/*.j2`, `platform/`, `bootstrap.sh`, `scripts/install/`).
+1. Edit source files only (`platform.yaml`, `versions.yaml`, `services/*.yaml`, `templates/*.j2`, `ai_platform/`, `bootstrap.sh`, `scripts/install/`).
 2. Never edit generated files (`compose.yaml`, `configs/*`, `.env`, `secrets/*`, `.install-state`).
 3. Run `make lint` and `make test` before declaring completion.
 4. Keep Python code modular and typed.

@@ -118,7 +118,10 @@ bootstrap.py          "Deploy this platform."
 | Layer | Responsibility | Files |
 |---|---|---|
 | Machine preparation | Install tools, init Podman, generate secrets | `bootstrap.sh`, `scripts/install/*.sh` |
-| Platform deployment | Validate config, render templates, deploy containers | `bootstrap.py`, `platform/*.py` |
+| Platform deployment | Validate config, render templates, deploy containers | `bootstrap.py`, `ai_platform/*.py` |
+| Node enrollment | Dynamic IP allocation, MAC reservation, SSH setup | `ai_platform/nodes.py`, `ai_platform/enrollment.py` |
+| Local inference | Direct execution of llama-server on Mac | `ai_platform/config.py`, `templates/` |
+| Remote inference | Provisioning and configuration of Linux nodes | `ai_platform/provisioner.py`, `scripts/inference/` |
 
 ## Configuration Pipeline
 
@@ -143,7 +146,7 @@ flowchart LR
 | Configuration | `platform.yaml`, `versions.yaml` | Yes |
 | Service manifests | `services/*.yaml` | Yes |
 | Templates | `templates/**/*.j2` | Yes |
-| Python logic | `platform/` | Yes |
+| Python logic | `ai_platform/` | Yes |
 | Shell installer | `bootstrap.sh`, `scripts/install/` | Yes |
 | Generated output | `compose.yaml`, `configs/` | **No** |
 | Secrets | `.env`, `secrets/` | **No** (generated) |

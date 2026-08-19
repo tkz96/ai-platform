@@ -6,8 +6,9 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from platform.nodes import NodeRecord
 from typing import Any
+
+from ai_platform.nodes import NodeRecord
 
 
 @dataclass(frozen=True)

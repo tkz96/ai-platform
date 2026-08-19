@@ -1,11 +1,11 @@
 """Unit and integration tests for SetupEngine and setup web routes."""
 
 from pathlib import Path
-from platform.setup import SetupEngine, clean_ansi
-from platform.web.app import app
 
 from fastapi.testclient import TestClient
-import pytest
+
+from ai_platform.setup import SetupEngine, clean_ansi
+from ai_platform.web.app import app
 
 client = TestClient(app)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -50,7 +50,14 @@ def test_setup_engine_empirical_checks():
 
     assert len(statuses) == 6
     for s in statuses:
-        assert s.id in ["05-podman", "06a-networking", "07-secrets", "08-render", "09-deploy", "10-verify"]
+        assert s.id in [
+            "05-podman",
+            "06a-networking",
+            "07-secrets",
+            "08-render",
+            "09-deploy",
+            "10-verify",
+        ]
         assert s.status in ["completed", "pending", "failed", "in_progress"]
         assert isinstance(s.empirical_details, dict)
 
