@@ -1,56 +1,222 @@
 {% extends "base.html" %}
 
-{% block title %}AI Platform — Control Plane & Inference Cluster{% endblock %}
+{% block title %}AI Platform — Control Plane & Inference Cluster Dashboard{% endblock %}
 
 {% block content %}
-<div style="display: flex; flex-direction: column; gap: 1.75rem;">
+<div x-data="{ activeTab: '{{ initial_tab }}', serviceSearch: '', serviceStatus: 'all' }" style="display: flex; flex-direction: column; gap: 1.85rem;">
 
-  <!-- Operator Metric Strip (UI Craft Command Composition) -->
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
-    <!-- Hero Metric Card (Primary) -->
-    <div class="glass-card" style="padding: 1.25rem; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(17, 24, 39, 0.8)); border-color: rgba(6, 182, 212, 0.25);">
-      <div style="font-size: 0.75rem; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.04em;">Control Plane Services</div>
-      <div class="tabular-nums" style="font-size: 2.25rem; font-weight: 700; color: #ffffff; margin-top: 0.25rem; letter-spacing: -0.03em;">6 / 6</div>
-      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">Containers active on Podman VM</div>
+  <!-- 1. Real Operator Metric Cockpit -->
+  <div class="metric-strip" role="region" aria-label="System Metrics Summary">
+    
+    <!-- Metric 1: Control Plane Containers -->
+    <div class="glass-card metric-card metric-card-hero">
+      <div class="metric-title" style="color: var(--accent-primary-hover);">Control plane services</div>
+      <div class="metric-value tabular-nums">{{ healthy_services_count }} / {{ total_services_count }}</div>
+      <div class="metric-subtext">Podman VM containers healthy</div>
     </div>
 
-    <!-- Support Metric 1 -->
-    <div class="glass-card" style="padding: 1.25rem;">
-      <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Inference Subnet</div>
-      <div class="mono tabular-nums" style="font-size: 1.5rem; font-weight: 600; color: #38bdf8; margin-top: 0.35rem;">10.42.0.0/24</div>
-      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">1 GPU Node Enrolled (<code class="mono" style="color: #34d399;">10.42.0.2</code>)</div>
+    <!-- Metric 2: Inference Subnet -->
+    <div class="glass-card metric-card">
+      <div class="metric-title">Inference subnet</div>
+      <div class="metric-value mono tabular-nums" style="font-size: 1.6rem; color: #38bdf8;">{{ platform_info.subnet }}</div>
+      <div class="metric-subtext">
+        <span class="mono" style="color: var(--status-emerald-text);">{{ ready_nodes_count }}</span> of <span class="mono">{{ total_nodes_count }}</span> nodes ready (<code class="mono">{{ platform_info.node_ip_start }}</code>)
+      </div>
     </div>
 
-    <!-- Support Metric 2 -->
-    <div class="glass-card" style="padding: 1.25rem;">
-      <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">DHCP & NAT Gateway</div>
-      <div class="mono tabular-nums" style="font-size: 1.5rem; font-weight: 600; color: #34d399; margin-top: 0.35rem;">Active</div>
-      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">macOS PF NAT + dnsmasq (<code class="mono">10.42.0.1</code>)</div>
+    <!-- Metric 3: DHCP & NAT Gateway -->
+    <div class="glass-card metric-card">
+      <div class="metric-title">DHCP & NAT gateway</div>
+      <div class="metric-value mono tabular-nums" style="font-size: 1.6rem; color: var(--status-emerald-text);">Active</div>
+      <div class="metric-subtext">
+        PF NAT + dnsmasq (<code class="mono">{{ platform_info.mac_ip }}</code>)
+      </div>
     </div>
 
-    <!-- Support Metric 3 -->
-    <div class="glass-card" style="padding: 1.25rem;">
-      <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Gateway Proxies</div>
-      <div class="mono tabular-nums" style="font-size: 1.5rem; font-weight: 600; color: #e5e7eb; margin-top: 0.35rem;">:8080 / :4000</div>
-      <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">Caddy Gateway + LiteLLM Proxy</div>
+    <!-- Metric 4: Active Model Target -->
+    <div class="glass-card metric-card">
+      <div class="metric-title">Default model target</div>
+      <div class="metric-value mono" style="font-size: 1.35rem; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        {{ platform_info.default_model }}
+      </div>
+      <div class="metric-subtext">
+        32K context · Flash Attention · GGUF
+      </div>
     </div>
+
   </div>
 
-  <!-- Section 1: Control Plane Services Grid -->
-  <section>
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
+  <!-- 2. Interactive Navigation Tabs (Alpine.js) -->
+  <nav class="tab-list" role="tablist" aria-label="Dashboard views">
+    
+    <button 
+      role="tab"
+      :aria-selected="activeTab === 'setup'"
+      aria-controls="panel-setup"
+      id="tab-setup"
+      class="tab-btn" 
+      :class="{ 'active': activeTab === 'setup' }" 
+      @click="activeTab = 'setup'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+      </svg>
+      <span>Setup & provision</span>
+      <span class="tab-counter" style="{% if not setup_summary.is_fully_provisioned %}background: var(--accent-primary); color: #060911; font-weight: 700;{% endif %}">{{ setup_summary.completed_phases }}/{{ setup_summary.total_phases }}</span>
+    </button>
+
+    <button 
+      role="tab"
+      :aria-selected="activeTab === 'services'"
+      aria-controls="panel-services"
+      id="tab-services"
+      class="tab-btn" 
+      :class="{ 'active': activeTab === 'services' }" 
+      @click="activeTab = 'services'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+      </svg>
+      <span>Control plane services</span>
+      <span class="tab-counter">{{ total_services_count }}</span>
+    </button>
+
+    <button 
+      role="tab"
+      :aria-selected="activeTab === 'nodes'"
+      aria-controls="panel-nodes"
+      id="tab-nodes"
+      class="tab-btn" 
+      :class="{ 'active': activeTab === 'nodes' }" 
+      @click="activeTab = 'nodes'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="8" y="8" width="8" height="8"/><line x1="3" y1="9" x2="1" y2="9"/><line x1="23" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="1" y2="15"/><line x1="23" y1="15" x2="21" y2="15"/>
+      </svg>
+      <span>Inference cluster</span>
+      <span class="tab-counter">{{ total_nodes_count }}</span>
+    </button>
+
+    <button 
+      role="tab"
+      :aria-selected="activeTab === 'topology'"
+      aria-controls="panel-topology"
+      id="tab-topology"
+      class="tab-btn" 
+      :class="{ 'active': activeTab === 'topology' }" 
+      @click="activeTab = 'topology'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+      </svg>
+      <span>Topology & network</span>
+    </button>
+
+    <button 
+      role="tab"
+      :aria-selected="activeTab === 'health'"
+      aria-controls="panel-health"
+      id="tab-health"
+      class="tab-btn" 
+      :class="{ 'active': activeTab === 'health' }" 
+      @click="activeTab = 'health'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+      <span>Health & port matrix</span>
+    </button>
+
+    <button 
+      role="tab"
+      :aria-selected="activeTab === 'playground'"
+      aria-controls="panel-playground"
+      id="tab-playground"
+      class="tab-btn" 
+      :class="{ 'active': activeTab === 'playground' }" 
+      @click="activeTab = 'playground'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      <span>Model playground</span>
+    </button>
+
+  </nav>
+
+  <!-- =========================================================================
+       PANEL 0: SETUP & PROVISIONING
+       ========================================================================= -->
+  <section 
+    id="panel-setup" 
+    role="tabpanel" 
+    aria-labelledby="tab-setup" 
+    x-show="activeTab === 'setup'" 
+    x-transition:enter="transition ease-out duration-180"
+    x-transition:enter-start="opacity-0 transform translate-y-2"
+    x-transition:enter-end="opacity-100 transform translate-y-0">
+    
+    <div 
+      id="setup-checklist-container" 
+      hx-get="/api/setup/status" 
+      hx-trigger="load, refreshStatus from:#setup-checklist-container, refreshAll from:body" 
+      hx-swap="innerHTML">
+      {% include "partials/setup_checklist.html" with context %}
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       PANEL 1: CONTROL PLANE SERVICES
+       ========================================================================= -->
+  <section 
+    id="panel-services" 
+    role="tabpanel" 
+    aria-labelledby="tab-services" 
+    x-show="activeTab === 'services'" 
+    x-transition:enter="transition ease-out duration-180"
+    x-transition:enter-start="opacity-0 transform translate-y-2"
+    x-transition:enter-end="opacity-100 transform translate-y-0"
+    style="{% if initial_tab != 'services' %}display: none;{% endif %}">
+    
+    <!-- Section Toolbar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
       <div>
-        <h2 style="font-size: 1.15rem; font-weight: 600; color: #ffffff; letter-spacing: -0.01em;">Control Plane Services</h2>
-        <p style="font-size: 0.775rem; color: var(--text-muted);">Rootless Podman containers managing gateway, database, and telemetry</p>
+        <h2 style="font-size: 1.2rem; font-weight: 700; color: #ffffff; margin: 0;">Control plane services</h2>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">
+          Rootless Podman containers managing reverse proxy, routing, database, and telemetry
+        </p>
       </div>
 
-      <div style="font-size: 0.725rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
-        <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--accent-cyan); display: inline-block;"></span>
-        Polling Every 5s
+      <!-- Live Search & Filter Controls -->
+      <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+        
+        <input 
+          type="text" 
+          placeholder="Filter service by name..." 
+          class="input-text" 
+          style="width: 220px; font-size: 0.775rem;"
+          hx-get="/api/ui/services"
+          hx-trigger="keyup changed delay:250ms"
+          hx-target="#services-grid-container"
+          hx-swap="innerHTML"
+          name="search">
+
+        <select 
+          class="input-select" 
+          style="width: 140px; font-size: 0.775rem;"
+          hx-get="/api/ui/services"
+          hx-trigger="change"
+          hx-target="#services-grid-container"
+          hx-swap="innerHTML"
+          name="status_filter">
+          <option value="all">All statuses</option>
+          <option value="healthy">Healthy only</option>
+          <option value="unhealthy">Unhealthy only</option>
+          <option value="stopped">Stopped only</option>
+        </select>
+
+        <div style="font-size: 0.725rem; color: var(--text-tertiary); display: flex; align-items: center; gap: 0.4rem; margin-left: 0.5rem;">
+          <span class="badge-dot pulse-dot" style="background: var(--accent-primary);" aria-hidden="true"></span>
+          <span>Polling 5s</span>
+        </div>
       </div>
     </div>
 
-    <!-- HTMX Live Polling Container for Services -->
+    <!-- HTMX Live Polling Services Grid -->
     <div 
       id="services-grid-container" 
       hx-get="/api/ui/services" 
@@ -60,21 +226,34 @@
     </div>
   </section>
 
-  <!-- Section 2: Remote Inference Cluster Nodes -->
-  <section>
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
+  <!-- =========================================================================
+       PANEL 2: GPU INFERENCE CLUSTER
+       ========================================================================= -->
+  <section 
+    id="panel-nodes" 
+    role="tabpanel" 
+    aria-labelledby="tab-nodes" 
+    x-show="activeTab === 'nodes'" 
+    x-transition:enter="transition ease-out duration-180"
+    x-transition:enter-start="opacity-0 transform translate-y-2"
+    x-transition:enter-end="opacity-100 transform translate-y-0"
+    style="display: none;">
+    
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
       <div>
-        <h2 style="font-size: 1.15rem; font-weight: 600; color: #ffffff; letter-spacing: -0.01em;">Remote Inference Cluster</h2>
-        <p style="font-size: 0.775rem; color: var(--text-muted);">Dedicated Linux PC running model inference over private Ethernet</p>
+        <h2 style="font-size: 1.2rem; font-weight: 700; color: #ffffff; margin: 0;">Remote GPU inference cluster</h2>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">
+          Dedicated Linux PC nodes executing high-performance GGUF LLM inference over private Ethernet
+        </p>
       </div>
 
-      <div style="font-size: 0.725rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
-        <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--status-emerald); display: inline-block;"></span>
-        Polling Every 5s
+      <div style="font-size: 0.725rem; color: var(--text-tertiary); display: flex; align-items: center; gap: 0.4rem;">
+        <span class="badge-dot pulse-dot" style="background: var(--status-emerald);" aria-hidden="true"></span>
+        <span>Polling 5s</span>
       </div>
     </div>
 
-    <!-- HTMX Live Polling Container for Nodes -->
+    <!-- HTMX Live Polling Nodes Grid -->
     <div 
       id="nodes-grid-container" 
       hx-get="/api/ui/nodes" 
@@ -84,29 +263,266 @@
     </div>
   </section>
 
-  <!-- Section 3: Platform Endpoints & Reference Cards -->
-  <section class="glass-card" style="padding: 1.25rem;">
-    <h3 style="font-size: 0.95rem; font-weight: 600; color: #ffffff; margin-bottom: 0.85rem;">Platform Endpoints</h3>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.85rem; font-size: 0.825rem;">
+  <!-- =========================================================================
+       PANEL 3: TOPOLOGY & NETWORK ARCHITECTURE
+       ========================================================================= -->
+  <section 
+    id="panel-topology" 
+    role="tabpanel" 
+    aria-labelledby="tab-topology" 
+    x-show="activeTab === 'topology'" 
+    x-transition:enter="transition ease-out duration-180"
+    x-transition:enter-start="opacity-0 transform translate-y-2"
+    x-transition:enter-end="opacity-100 transform translate-y-0"
+    style="display: none;">
+    
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
       
-      <a href="http://localhost:4000" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(6,182,212,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-        <div style="font-weight: 600; color: var(--accent-cyan);">LiteLLM API Proxy</div>
-        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://localhost:4000</div>
+      <!-- Visual Topology Card -->
+      <div class="glass-card" style="padding: 1.85rem;">
+        <h3 style="font-size: 1.15rem; font-weight: 700; color: #ffffff; margin-bottom: 0.35rem;">Physical and logical network topology</h3>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1.85rem;">
+          Dedicated point-to-point Ethernet link isolating compute hardware from WAN network traffic.
+        </p>
+
+        <div class="topology-container">
+          
+          <!-- Node A: Mac Mini Control Plane -->
+          <div style="background: rgba(0,0,0,0.35); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); padding: 1.35rem; box-shadow: var(--glass-inner-shadow-subtle);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
+              <span style="font-weight: 700; font-size: 1rem; color: #ffffff;">Control plane (Mac Mini)</span>
+              <span class="badge badge-cyan mono">10.42.0.1</span>
+            </div>
+            
+            <div style="font-size: 0.775rem; color: var(--text-secondary); line-height: 1.65;">
+              <div>• <strong>DNS/DHCP:</strong> dnsmasq (<code class="mono">10.42.0.1</code>)</div>
+              <div>• <strong>NAT Gateway:</strong> macOS PF NAT forwarder</div>
+              <div>• <strong>Services:</strong> Caddy (:8080), LiteLLM (:4000), Langfuse (:3000)</div>
+              <div>• <strong>Databases:</strong> Postgres (:5432), ClickHouse (:8123), Redis (:6379)</div>
+            </div>
+          </div>
+
+          <!-- Link Bridge -->
+          <div class="link-bridge">
+            <div style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--accent-primary); letter-spacing: 0.06em;">
+              Private Ethernet link
+            </div>
+            <div class="link-line"></div>
+            <div class="mono tabular-nums" style="font-size: 0.775rem; color: var(--text-secondary);">
+              10.42.0.0/24 (Zero WAN disruption)
+            </div>
+          </div>
+
+          <!-- Node B: Linux PC GPU Node -->
+          <div style="background: rgba(0,0,0,0.35); border: 1px solid var(--status-emerald-border); border-radius: var(--radius-md); padding: 1.35rem; box-shadow: var(--glass-inner-shadow-subtle);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
+              <span style="font-weight: 700; font-size: 1rem; color: #ffffff;">Inference node (Linux PC)</span>
+              <span class="badge badge-healthy mono">10.42.0.2</span>
+            </div>
+            
+            <div style="font-size: 0.775rem; color: var(--text-secondary); line-height: 1.65;">
+              <div>• <strong>Inference engine:</strong> llama-server (:8080)</div>
+              <div>• <strong>Active model:</strong> Qwen 3.6 35B-A3B (UD-Q5_K_S)</div>
+              <div>• <strong>Acceleration:</strong> Dedicated NVIDIA RTX GPU (CUDA)</div>
+              <div>• <strong>Routing:</strong> Default gateway via <code class="mono">10.42.0.1</code></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- IP Pool Allocation Table -->
+      <div class="glass-card" style="padding: 1.65rem;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: #ffffff; margin-bottom: 1.15rem;">Subnet IP range allocations</h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; font-size: 0.8rem;">
+          <div style="background: rgba(0,0,0,0.28); padding: 0.95rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Gateway / control plane</div>
+            <div class="mono" style="color: var(--accent-primary-hover); font-weight: 700; margin-top: 0.2rem; font-size: 0.95rem;">10.42.0.1</div>
+            <div style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.25rem;">Mac Mini interface (en0)</div>
+          </div>
+
+          <div style="background: rgba(0,0,0,0.28); padding: 0.95rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Static inference nodes</div>
+            <div class="mono" style="color: var(--status-emerald-text); font-weight: 700; margin-top: 0.2rem; font-size: 0.95rem;">10.42.0.2 - 10.42.0.9</div>
+            <div style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.25rem;">Reserved static pool for enrolled nodes</div>
+          </div>
+
+          <div style="background: rgba(0,0,0,0.28); padding: 0.95rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Dynamic DHCP pool</div>
+            <div class="mono" style="color: #e5e7eb; font-weight: 700; margin-top: 0.2rem; font-size: 0.95rem;">10.42.0.100 - 10.42.0.200</div>
+            <div style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.25rem;">Assigned by dnsmasq during initial setup</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       PANEL 4: HEALTH & PORT MATRIX
+       ========================================================================= -->
+  <section 
+    id="panel-health" 
+    role="tabpanel" 
+    aria-labelledby="tab-health" 
+    x-show="activeTab === 'health'" 
+    x-transition:enter="transition ease-out duration-180"
+    x-transition:enter-start="opacity-0 transform translate-y-2"
+    x-transition:enter-end="opacity-100 transform translate-y-0"
+    style="display: none;">
+    
+    <div class="glass-card" style="padding: 1.65rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.35rem; flex-wrap: wrap; gap: 0.75rem;">
+        <div>
+          <h2 style="font-size: 1.2rem; font-weight: 700; color: #ffffff; margin: 0;">Multi-service health & port matrix</h2>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">
+            Empirical TCP handshake & HTTP health check telemetry across control plane and inference ports
+          </p>
+        </div>
+
+        <button 
+          class="btn btn-secondary btn-sm"
+          hx-get="/api/ui/health-matrix"
+          hx-target="#health-matrix-container"
+          hx-swap="innerHTML">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          <span>Probe all ports</span>
+        </button>
+      </div>
+
+      <!-- HTMX Loaded Health Matrix -->
+      <div 
+        id="health-matrix-container"
+        hx-get="/api/ui/health-matrix"
+        hx-trigger="load, every 10s, refreshAll from:body"
+        hx-swap="innerHTML">
+        <div style="padding: 2.5rem; text-align: center; color: var(--text-tertiary);">
+          Probing platform network ports...
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       PANEL 5: MODEL PLAYGROUND & COMPLETION TESTER
+       ========================================================================= -->
+  <section 
+    id="panel-playground" 
+    role="tabpanel" 
+    aria-labelledby="tab-playground" 
+    x-show="activeTab === 'playground'" 
+    x-transition:enter="transition ease-out duration-180"
+    x-transition:enter-start="opacity-0 transform translate-y-2"
+    x-transition:enter-end="opacity-100 transform translate-y-0"
+    style="display: none;">
+    
+    <div class="glass-card" style="padding: 1.85rem;">
+      <div style="margin-bottom: 1.35rem;">
+        <h2 style="font-size: 1.2rem; font-weight: 700; color: #ffffff; margin: 0;">Interactive model inference tester</h2>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">
+          Dispatch test completions directly to LiteLLM proxy (<code class="mono">:4000</code>) or Linux llama-server (<code class="mono">10.42.0.2:8080</code>) to verify latency and generation quality.
+        </p>
+      </div>
+
+      <!-- Playground Prompt Form (HTMX) -->
+      <form 
+        hx-post="/api/ui/test-completion" 
+        hx-target="#playground-result-container" 
+        hx-swap="innerHTML"
+        hx-indicator="#completion-spinner"
+        style="display: flex; flex-direction: column; gap: 1.15rem;">
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+          <div>
+            <label style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); display: block; margin-bottom: 0.35rem; letter-spacing: 0.05em;">Inference target</label>
+            <select name="target" class="input-select">
+              <option value="litellm">LiteLLM Proxy (http://127.0.0.1:4000)</option>
+              <option value="llama_server">llama-server direct (http://10.42.0.2:8080)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); display: block; margin-bottom: 0.35rem; letter-spacing: 0.05em;">Temperature</label>
+            <input type="number" name="temperature" value="0.7" step="0.1" min="0" max="2" class="input-text">
+          </div>
+
+          <div>
+            <label style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); display: block; margin-bottom: 0.35rem; letter-spacing: 0.05em;">Max tokens</label>
+            <input type="number" name="max_tokens" value="64" step="16" min="1" max="2048" class="input-text">
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); display: block; margin-bottom: 0.35rem; letter-spacing: 0.05em;">Test prompt</label>
+          <textarea 
+            name="prompt" 
+            rows="3" 
+            class="input-textarea" 
+            placeholder="Enter test prompt to evaluate model inference speed...">Ping test from AI Platform dashboard. Respond with a 5-word confirmation.</textarea>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem;">
+          <div id="completion-spinner" class="htmx-indicator" style="align-items: center; gap: 0.45rem; font-size: 0.8rem; color: var(--accent-primary-hover);">
+            <svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+            <span>Generating completion...</span>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Send completion test</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Playground Response Container -->
+      <div id="playground-result-container"></div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SECTION 6: QUICK ENDPOINTS REFERENCE STRIP
+       ========================================================================= -->
+  <section class="glass-card" style="padding: 1.5rem;" role="region" aria-label="Platform Endpoints Directory">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.15rem;">
+      <h3 style="font-size: 1rem; font-weight: 700; color: #ffffff; margin: 0;">Platform service endpoints directory</h3>
+      <span style="font-size: 0.725rem; color: var(--text-tertiary);">Direct web and API links</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.95rem; font-size: 0.825rem;">
+      
+      <a href="http://localhost:4000" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.95rem; text-decoration: none; color: var(--text-primary); transition: all 0.18s ease; box-shadow: var(--glass-inner-shadow-subtle);" onmouseover="this.style.borderColor='var(--accent-primary-border)'; this.style.background='rgba(14,165,233,0.05)'" onmouseout="this.style.borderColor='var(--border-subtle)'; this.style.background='rgba(255,255,255,0.025)'">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-weight: 700; color: var(--accent-primary-hover);">LiteLLM proxy</span>
+          <span class="mono tabular-nums" style="font-size: 0.7rem; color: var(--text-tertiary);">:4000</span>
+        </div>
+        <div class="mono tabular-nums" style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.35rem;">OpenAI API gateway</div>
       </a>
 
-      <a href="http://localhost:3000" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(99,102,241,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-        <div style="font-weight: 600; color: #818cf8;">Langfuse Observability</div>
-        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://localhost:3000</div>
+      <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.95rem; text-decoration: none; color: var(--text-primary); transition: all 0.18s ease; box-shadow: var(--glass-inner-shadow-subtle);" onmouseover="this.style.borderColor='rgba(99,102,241,0.4)'; this.style.background='rgba(99,102,241,0.05)'" onmouseout="this.style.borderColor='var(--border-subtle)'; this.style.background='rgba(255,255,255,0.025)'">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-weight: 700; color: #818cf8;">Langfuse UI</span>
+          <span class="mono tabular-nums" style="font-size: 0.7rem; color: var(--text-tertiary);">:3000</span>
+        </div>
+        <div class="mono tabular-nums" style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.35rem;">LLM tracing & observability</div>
       </a>
 
-      <a href="http://localhost:8080" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(16,185,129,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-        <div style="font-weight: 600; color: #34d399;">Caddy Reverse Proxy</div>
-        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://localhost:8080</div>
+      <a href="http://localhost:8080" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.95rem; text-decoration: none; color: var(--text-primary); transition: all 0.18s ease; box-shadow: var(--glass-inner-shadow-subtle);" onmouseover="this.style.borderColor='rgba(16,185,129,0.4)'; this.style.background='rgba(16,185,129,0.05)'" onmouseout="this.style.borderColor='var(--border-subtle)'; this.style.background='rgba(255,255,255,0.025)'">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-weight: 700; color: var(--status-emerald-text);">Caddy gateway</span>
+          <span class="mono tabular-nums" style="font-size: 0.7rem; color: var(--text-tertiary);">:8080 / :8443</span>
+        </div>
+        <div class="mono tabular-nums" style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.35rem;">Reverse proxy & TLS</div>
       </a>
 
-      <a href="http://10.42.0.2:8080/health" target="_blank" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.75rem; text-decoration: none; color: var(--text-main); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='rgba(56,189,248,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-        <div style="font-weight: 600; color: #38bdf8;">llama-server Health Probe</div>
-        <div class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">http://10.42.0.2:8080/health</div>
+      <a href="http://10.42.0.2:8080/health" target="_blank" rel="noopener noreferrer" style="background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.95rem; text-decoration: none; color: var(--text-primary); transition: all 0.18s ease; box-shadow: var(--glass-inner-shadow-subtle);" onmouseover="this.style.borderColor='rgba(56,189,248,0.4)'; this.style.background='rgba(56,189,248,0.05)'" onmouseout="this.style.borderColor='var(--border-subtle)'; this.style.background='rgba(255,255,255,0.025)'">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-weight: 700; color: #38bdf8;">llama-server probe</span>
+          <span class="mono tabular-nums" style="font-size: 0.7rem; color: var(--text-tertiary);">10.42.0.2:8080</span>
+        </div>
+        <div class="mono tabular-nums" style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.35rem;">Linux GPU node health</div>
       </a>
 
     </div>

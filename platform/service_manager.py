@@ -38,11 +38,10 @@ class ServiceManager:
             )
 
     def list_services(self) -> list[dict[str, Any]]:
-        """Return live status of all whitelisted platform services."""
+        """Return live status of all whitelisted platform services using parallel probing."""
         resolved = resolve_platform(self.root_dir)
-        results: list[dict[str, Any]] = []
 
-        for name in resolved.dependency_order:
+        def _probe_one(name: str) -> dict[str, Any]:
             manifest = resolved.services.get(name)
             port = manifest.ports[0].host_port if manifest and manifest.ports else None
             endpoint = f"http://localhost:{port}" if port else "N/A"
@@ -52,25 +51,28 @@ class ServiceManager:
 
             if port:
                 if manifest and manifest.health and manifest.health.endpoint:
-                    health_url = f"http://localhost:{port}{manifest.health.endpoint}"
-                    h_res = probe_http(health_url, timeout=2)
+                    health_url = f"http://127.0.0.1:{port}{manifest.health.endpoint}"
+                    h_res = probe_http(health_url, timeout=0.5)
                     probe_passed = h_res.passed
                     probe_status = "HEALTHY" if probe_passed else f"UNHEALTHY ({h_res.status})"
                 else:
-                    t_res = probe_tcp("localhost", port, timeout=2)
+                    t_res = probe_tcp("127.0.0.1", port, timeout=0.5)
                     probe_passed = t_res.passed
                     probe_status = "HEALTHY" if probe_passed else f"UNHEALTHY ({t_res.status})"
 
-            results.append(
-                {
-                    "name": name,
-                    "endpoint": endpoint,
-                    "status": probe_status,
-                    "passed": probe_passed,
-                }
-            )
+            return {
+                "name": name,
+                "endpoint": endpoint,
+                "status": probe_status,
+                "passed": probe_passed,
+            }
 
-        return results
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(resolved.dependency_order) or 1) as executor:
+            future_to_name = {executor.submit(_probe_one, name): name for name in resolved.dependency_order}
+            results_by_name = {future_to_name[f]: f.result() for f in concurrent.futures.as_completed(future_to_name)}
+
+        return [results_by_name[name] for name in resolved.dependency_order if name in results_by_name]
 
     def launch_service(self, name: str, timeout: int = 30) -> DiagnosticResult:
         """Launch a service, wait for health probe, and return final status.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from platform.web.routes.dashboard import router as dashboard_router
+from platform.web.routes.setup import router as setup_router
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +19,7 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.include_router(dashboard_router)
+app.include_router(setup_router)
 
 
 def create_app() -> FastAPI:

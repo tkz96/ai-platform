@@ -14,6 +14,7 @@ dev = [
   "pytest>=8.4.1",
   "pre-commit>=4.3.0",
   "yamllint>=1.37.1",
+  "playwright>=1.62.0",
 ]
 
 [tool.ruff]

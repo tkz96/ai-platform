@@ -1,95 +1,158 @@
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.15rem;">
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 1.25rem;">
   {% if not nodes %}
-  <div class="glass-card" style="padding: 2.5rem; text-align: center; grid-column: 1 / -1;">
-    <div style="color: var(--text-muted); font-size: 0.875rem;">No inference nodes enrolled yet.</div>
-    <div style="font-size: 0.775rem; color: var(--text-subtle); margin-top: 0.4rem;">
-      Run <code class="mono" style="color: #38bdf8;">./bootstrap.sh connect-inference</code> to display enrollment command for fresh Linux PCs.
+  <div class="glass-card" style="padding: 3.5rem 2rem; text-align: center; grid-column: 1 / -1;">
+    <div style="width: 3.5rem; height: 3.5rem; border-radius: 50%; background: var(--accent-primary-subtle); border: 1px solid var(--accent-primary-border); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem auto;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+      </svg>
+    </div>
+    
+    <h3 style="font-size: 1.15rem; font-weight: 700; color: #ffffff; margin-bottom: 0.4rem;">No inference nodes enrolled</h3>
+    <p style="color: var(--text-secondary); font-size: 0.85rem; max-width: 520px; margin: 0 auto 1.5rem auto;">
+      Connect your Linux PC with dedicated NVIDIA GPU hardware to the Mac Mini via private Ethernet (<code class="mono">10.42.0.0/24</code>).
+    </p>
+
+    <!-- One-Touch Enrollment Instruction Box -->
+    <div style="background: var(--bg-terminal); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 1.15rem; max-width: 620px; margin: 0 auto; text-align: left;" x-data="{ copied: false }">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+        <span style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em;">Run on Linux PC terminal:</span>
+        <button 
+          class="btn btn-secondary btn-sm" 
+          @click="copyToClipboard('curl -fsSL http://10.42.0.1:8765/node-enroll.sh -o node-enroll.sh && chmod +x node-enroll.sh && sudo ./node-enroll.sh', 'Enrollment command copied!')"
+          aria-label="Copy enrollment command to clipboard">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span>Copy command</span>
+        </button>
+      </div>
+      <div class="terminal-box" style="font-size: 0.775rem; padding: 0.75rem;">curl -fsSL http://10.42.0.1:8765/node-enroll.sh -o node-enroll.sh && chmod +x node-enroll.sh && sudo ./node-enroll.sh</div>
     </div>
   </div>
   {% else %}
     {% for n in nodes %}
-    <div class="glass-card" style="padding: 1.25rem;">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-        <div>
-          <span style="font-weight: 700; font-size: 1.05rem; color: #ffffff;">{{ n.identity.id }}</span>
-          <span style="font-size: 0.775rem; color: var(--text-muted); margin-left: 0.4rem;">({{ n.identity.hostname }})</span>
-        </div>
-        <div>
-          {% if n.runtime.status == 'ready' %}
-            <span class="badge badge-healthy">
-              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
-              Ready
-            </span>
-          {% elif n.runtime.status == 'offline' %}
-            <span class="badge badge-unhealthy">
-              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
-              Offline
-            </span>
-          {% else %}
-            <span class="badge badge-warning">
-              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
-              {{ n.runtime.status }}
-            </span>
-          {% endif %}
-        </div>
-      </div>
-
-      <!-- Network & Hardware Info -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.8rem; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.25); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-        <div>
-          <div style="color: var(--text-subtle); font-size: 0.725rem; font-weight: 500;">Reserved IP</div>
-          <div class="mono tabular-nums" style="color: #38bdf8; font-weight: 500; margin-top: 0.1rem;">{{ n.identity.reserved_ip }}</div>
-        </div>
-        <div>
-          <div style="color: var(--text-subtle); font-size: 0.725rem; font-weight: 500;">SSH Target</div>
-          <div class="mono tabular-nums" style="color: #d1d5db; margin-top: 0.1rem;">{{ n.identity.ssh_user }}@{{ n.identity.reserved_ip }}</div>
-        </div>
-        <div>
-          <div style="color: var(--text-subtle); font-size: 0.725rem; font-weight: 500;">CPU / RAM</div>
-          <div style="color: #e5e7eb; margin-top: 0.1rem;">{{ n.runtime.hardware.cpu if n.runtime.hardware else 'N/A' }} ({{ n.runtime.hardware.ram_gb if n.runtime.hardware else 0 }} GB)</div>
-        </div>
-        <div>
-          <div style="color: var(--text-subtle); font-size: 0.725rem; font-weight: 500;">Active Model</div>
-          <div class="mono" style="color: #34d399; margin-top: 0.1rem;">{{ n.desired.models[0].model_name if n.desired.models else 'qwen3.6-35b-a3b' }}</div>
-        </div>
-      </div>
-
-      <!-- GPU Specs Bar -->
-      {% if n.runtime.hardware and n.runtime.hardware.gpus %}
-        {% for g in n.runtime.hardware.gpus %}
-        <div style="margin-bottom: 1rem;">
-          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.3rem;">
-            <span style="display: flex; align-items: center; gap: 0.35rem;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><rect x="8" y="8" width="8" height="8"/><line x1="3" y1="9" x2="1" y2="9"/><line x1="23" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="1" y2="15"/><line x1="23" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="1"/><line x1="9" y1="23" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="1"/><line x1="15" y1="23" x2="15" y2="21"/></svg>
-              {{ g.name }}
-            </span>
-            <span class="mono tabular-nums">{{ g.vram_gb }} GB VRAM</span>
+    <div class="glass-card" style="padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; border-top: 2px solid {% if n.runtime.status == 'ready' %}var(--status-emerald){% elif n.runtime.status == 'offline' %}var(--status-rose){% else %}var(--status-amber){% endif %};">
+      
+      <div>
+        <!-- Node Header: ID, Hostname, State Badge -->
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.95rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.55rem;">
+              <h3 style="font-size: 1.15rem; font-weight: 700; color: #ffffff; letter-spacing: -0.01em; margin: 0;">{{ n.identity.id }}</h3>
+              <span class="mono tabular-nums" style="font-size: 0.75rem; color: var(--text-secondary); background: rgba(255, 255, 255, 0.05); padding: 0.18rem 0.5rem; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle);">
+                {{ n.identity.hostname }}
+              </span>
+            </div>
+            <div style="font-size: 0.725rem; color: var(--text-tertiary); margin-top: 0.2rem;">
+              Linux GPU node · Point-to-point Ethernet
+            </div>
           </div>
-          <div style="width: 100%; height: 5px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
-            <div style="width: 100%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), #10b981);"></div>
+
+          <div>
+            {% if n.runtime.status == 'ready' %}
+              <span class="badge badge-healthy">
+                <span class="badge-dot pulse-dot" aria-hidden="true"></span>
+                <span>Ready</span>
+              </span>
+            {% elif n.runtime.status == 'offline' %}
+              <span class="badge badge-unhealthy">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>Offline</span>
+              </span>
+            {% else %}
+              <span class="badge badge-warning">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>{{ n.runtime.status }}</span>
+              </span>
+            {% endif %}
           </div>
         </div>
-        {% endfor %}
-      {% else %}
-        <div style="font-size: 0.75rem; color: var(--text-subtle); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.35rem;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          CPU Mode (No discrete GPU detected)
+
+        <!-- Network & Specs Summary Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.8rem; margin-bottom: 1.15rem; background: rgba(0, 0, 0, 0.32); padding: 0.9rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div>
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Reserved IP</div>
+            <div class="mono tabular-nums" style="color: var(--accent-primary-hover); font-weight: 600; margin-top: 0.15rem;">{{ n.identity.reserved_ip }}</div>
+          </div>
+          <div>
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">SSH target</div>
+            <div class="mono tabular-nums" style="color: var(--text-primary); margin-top: 0.15rem;">{{ n.identity.ssh_user }}@{{ n.identity.reserved_ip }}</div>
+          </div>
+          <div>
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">CPU / RAM</div>
+            <div style="color: var(--text-primary); margin-top: 0.15rem;">{{ n.runtime.hardware.cpu if n.runtime.hardware else 'N/A' }} ({{ n.runtime.hardware.ram_gb if n.runtime.hardware else 0 }} GB RAM)</div>
+          </div>
+          <div>
+            <div style="color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Active model</div>
+            <div class="mono" style="color: var(--status-emerald-text); font-weight: 600; margin-top: 0.15rem;">{{ n.desired.models[0].model_name if n.desired.models else 'qwen3.6-35b-a3b' }}</div>
+          </div>
         </div>
-      {% endif %}
+
+        <!-- GPU Specs & VRAM Allocation Gauge -->
+        {% if n.runtime.hardware and n.runtime.hardware.gpus %}
+          {% for g in n.runtime.hardware.gpus %}
+          <div style="background: rgba(14, 165, 233, 0.04); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 1.15rem; box-shadow: var(--glass-inner-shadow-subtle);">
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.775rem; margin-bottom: 0.45rem;">
+              <span style="display: flex; align-items: center; gap: 0.45rem; color: #ffffff; font-weight: 600;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2" aria-hidden="true">
+                  <rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><rect x="8" y="8" width="8" height="8"/><line x1="3" y1="9" x2="1" y2="9"/><line x1="23" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="1" y2="15"/><line x1="23" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="1"/><line x1="9" y1="23" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="1"/><line x1="15" y1="23" x2="15" y2="21"/>
+                </svg>
+                {{ g.name }}
+              </span>
+              <span class="mono tabular-nums" style="color: var(--status-emerald-text); font-weight: 700;">{{ g.vram_gb }} GB VRAM</span>
+            </div>
+            
+            <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: var(--radius-full); overflow: hidden;">
+              <div style="width: 100%; height: 100%; background: linear-gradient(90deg, var(--accent-primary), #10b981);"></div>
+            </div>
+
+            {% if g.driver_version or g.cuda_version %}
+            <div style="display: flex; gap: 1.25rem; font-size: 0.725rem; color: var(--text-tertiary); margin-top: 0.45rem;" class="mono tabular-nums">
+              {% if g.driver_version %}<span>Driver: {{ g.driver_version }}</span>{% endif %}
+              {% if g.cuda_version %}<span>CUDA: {{ g.cuda_version }}</span>{% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-bottom: 1.15rem; padding: 0.65rem; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 0.45rem;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <span>CPU inference mode (No discrete GPU detected)</span>
+          </div>
+        {% endif %}
+      </div>
 
       <!-- Footer Actions -->
-      <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem;">
-        <span style="font-size: 0.725rem; color: var(--text-subtle);">MAC: <code class="mono tabular-nums">{{ n.identity.mac_address }}</code></span>
+      <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-subtle); padding-top: 0.95rem; margin-top: auto; flex-wrap: wrap; gap: 0.5rem;">
+        <span style="font-size: 0.725rem; color: var(--text-tertiary);">MAC: <code class="mono tabular-nums">{{ n.identity.mac_address }}</code></span>
         
-        <button 
-          class="btn btn-secondary" 
-          hx-get="/api/ui/nodes/{{ n.identity.id }}/diagnose"
-          hx-target="#modal-container"
-          hx-swap="innerHTML">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Diagnose Node
-        </button>
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <button 
+            class="btn btn-secondary btn-sm" 
+            @click="copyToClipboard('ssh {{ n.identity.ssh_user }}@{{ n.identity.reserved_ip }}', 'SSH command copied!')"
+            title="Copy SSH connection string"
+            aria-label="Copy SSH command">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy SSH</span>
+          </button>
+
+          <button 
+            class="btn btn-secondary btn-sm" 
+            hx-get="/api/ui/nodes/{{ n.identity.id }}/diagnose"
+            hx-target="#modal-container"
+            hx-swap="innerHTML"
+            title="Run diagnostics on node {{ n.identity.id }}"
+            aria-label="Run diagnostics on node {{ n.identity.id }}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <span>Diagnose</span>
+          </button>
+        </div>
       </div>
+
     </div>
     {% endfor %}
   {% endif %}

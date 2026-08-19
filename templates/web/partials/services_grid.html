@@ -1,86 +1,144 @@
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.15rem;">
-  {% for s in services %}
-  <div class="glass-card" style="padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between;">
-    <div>
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.65rem;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span style="font-weight: 600; font-size: 0.95rem; color: #ffffff;">{{ s.name }}</span>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 1.25rem;">
+  {% if not services %}
+  <div class="glass-card" style="padding: 2.5rem; text-align: center; grid-column: 1 / -1;">
+    <div style="color: var(--text-secondary); font-size: 0.9rem;">No services match the active filter.</div>
+    <button 
+      class="btn btn-secondary btn-sm" 
+      style="margin-top: 0.75rem;"
+      hx-get="/api/ui/services"
+      hx-target="#services-grid-container"
+      hx-swap="innerHTML">
+      Reset filter
+    </button>
+  </div>
+  {% else %}
+    {% for s in services %}
+    <div class="glass-card" style="padding: 1.35rem; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px; border-top: 2px solid {% if s.status.startswith('HEALTHY') %}var(--status-emerald){% elif s.status.startswith('UNHEALTHY') %}var(--status-rose){% else %}var(--status-slate-border){% endif %};">
+      
+      <!-- Card Top: Name, Type, Status Badge -->
+      <div>
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: #ffffff; letter-spacing: -0.01em; margin: 0;">{{ s.name }}</h3>
+            <div style="font-size: 0.725rem; color: var(--text-tertiary); margin-top: 0.15rem;">
+              Podman rootless container
+            </div>
+          </div>
+
+          <div>
+            {% if s.status.startswith('HEALTHY') %}
+              <span class="badge badge-healthy">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>Healthy</span>
+              </span>
+            {% elif s.status.startswith('UNHEALTHY') %}
+              <span class="badge badge-unhealthy">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>Unhealthy</span>
+              </span>
+            {% else %}
+              <span class="badge badge-stopped">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>Stopped</span>
+              </span>
+            {% endif %}
+          </div>
         </div>
-        <div>
-          {% if s.status.startswith('HEALTHY') %}
-            <span class="badge badge-healthy">
-              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
-              Healthy
+
+        <!-- Endpoint & Diagnostics Summary -->
+        <div style="background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; margin-bottom: 1rem; font-size: 0.775rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-tertiary);">Endpoint:</span>
+            {% if s.endpoint and s.endpoint != 'N/A' %}
+              <a href="{{ s.endpoint }}" target="_blank" rel="noopener noreferrer" class="mono tabular-nums" style="color: var(--accent-primary-hover); text-decoration: none; font-weight: 600;" title="Open endpoint in new tab">
+                {{ s.endpoint }} ↗
+              </a>
+            {% else %}
+              <span class="mono" style="color: var(--text-tertiary);">Internal only</span>
+            {% endif %}
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem;">
+            <span style="color: var(--text-tertiary);">Probe:</span>
+            <span class="mono tabular-nums" style="color: {% if s.passed %}var(--status-emerald-text){% else %}var(--status-rose-text){% endif %}; font-weight: 600;">
+              {{ s.status }}
             </span>
-          {% elif s.status.startswith('UNHEALTHY') %}
-            <span class="badge badge-unhealthy">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              Unhealthy
-            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card Bottom: Action Toolbar (strictly bottom-aligned via margin-top: auto) -->
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; border-top: 1px solid var(--border-subtle); padding-top: 0.95rem; margin-top: auto; flex-wrap: wrap;">
+        
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <!-- Restart Action Form -->
+          <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="innerHTML" style="margin: 0;">
+            <input type="hidden" name="action" value="restart">
+            <button type="submit" class="btn btn-secondary btn-sm" title="Restart container {{ s.name }}" aria-label="Restart container {{ s.name }}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Restart</span>
+            </button>
+          </form>
+
+          <!-- Launch or Stop Button based on status -->
+          {% if s.passed %}
+          <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="innerHTML" style="margin: 0;">
+            <input type="hidden" name="action" value="stop">
+            <button type="submit" class="btn btn-danger btn-sm" title="Stop container {{ s.name }}" aria-label="Stop container {{ s.name }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="4" y="4" width="16" height="16" rx="2"/>
+              </svg>
+              <span>Stop</span>
+            </button>
+          </form>
           {% else %}
-            <span class="badge badge-stopped">
-              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
-              Stopped
-            </span>
+          <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="innerHTML" style="margin: 0;">
+            <input type="hidden" name="action" value="launch">
+            <button type="submit" class="btn btn-primary btn-sm" title="Launch container {{ s.name }}" aria-label="Launch container {{ s.name }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>Launch</span>
+            </button>
+          </form>
           {% endif %}
         </div>
+
+        <div style="display: flex; align-items: center; gap: 0.35rem;">
+          <!-- View Logs Drawer Button -->
+          <button 
+            class="btn btn-secondary btn-sm" 
+            hx-get="/api/ui/services/{{ s.name }}/logs"
+            hx-target="#logs-container"
+            hx-swap="innerHTML"
+            title="Inspect logs for {{ s.name }}"
+            aria-label="Inspect logs for {{ s.name }}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>Logs</span>
+          </button>
+
+          <!-- Diagnose Modal Button -->
+          <button 
+            class="btn btn-secondary btn-sm" 
+            hx-get="/api/ui/services/{{ s.name }}/diagnose"
+            hx-target="#modal-container"
+            hx-swap="innerHTML"
+            title="Run diagnostics for {{ s.name }}"
+            aria-label="Run diagnostics for {{ s.name }}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <span>Diag</span>
+          </button>
+        </div>
+
       </div>
 
-      <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.85rem;">
-        <span style="color: var(--text-subtle);">Endpoint: </span>
-        <a href="{{ s.endpoint }}" target="_blank" class="mono tabular-nums" style="color: #38bdf8; text-decoration: none;">{{ s.endpoint }}</a>
-      </div>
     </div>
-
-    <!-- Actions Toolbar -->
-    <div style="display: flex; align-items: center; gap: 0.4rem; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; flex-wrap: wrap;">
-      
-      <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
-        <input type="hidden" name="action" value="restart">
-        <button type="submit" class="btn btn-secondary" title="Restart container">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-          Restart
-        </button>
-      </form>
-
-      {% if s.passed %}
-      <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
-        <input type="hidden" name="action" value="stop">
-        <button type="submit" class="btn btn-danger" title="Stop container">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-          Stop
-        </button>
-      </form>
-      {% else %}
-      <form hx-post="/api/ui/services/{{ s.name }}/action" hx-target="#services-grid-container" hx-swap="outerHTML" style="margin: 0;">
-        <input type="hidden" name="action" value="launch">
-        <button type="submit" class="btn btn-primary" title="Launch container">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Launch
-        </button>
-      </form>
-      {% endif %}
-
-      <button 
-        class="btn btn-secondary" 
-        hx-get="/api/ui/services/{{ s.name }}/logs"
-        hx-target="#logs-container"
-        hx-swap="innerHTML"
-        title="View container logs">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Logs
-      </button>
-
-      <button 
-        class="btn btn-secondary" 
-        hx-get="/api/ui/services/{{ s.name }}/diagnose"
-        hx-target="#modal-container"
-        hx-swap="innerHTML"
-        title="Run service diagnostics">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Diagnose
-      </button>
-    </div>
-  </div>
-  {% endfor %}
+    {% endfor %}
+  {% endif %}
 </div>

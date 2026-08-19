@@ -614,23 +614,112 @@ run_destroy() {
   ui_success "Platform destroyed"
 }
 
+# ── Web Dashboard Launch & Sudo Session ───────────────────────────────────────
+
+run_bootstrap_default() {
+  ui_splash
+  ui_header "AI Platform Setup & Control Deck"
+
+  # 1. Ensure minimal prerequisites (00-check-macos through 06-ports)
+  ui_section "Host Prerequisites Validation"
+  
+  local minimal_phases=(
+    "check-macos:00-check-macos.sh"
+    "homebrew:01-homebrew.sh"
+    "tools:02-tools.sh"
+    "python:03-python.sh"
+    "uv:04-uv.sh"
+    "podman:05-podman.sh"
+    "ports:06-ports.sh"
+  )
+
+  # Check if minimal dependencies are already satisfied
+  local all_deps_met=true
+  if ! command -v git >/dev/null 2>&1 || \
+     ! command -v brew >/dev/null 2>&1 || \
+     ! command -v python3 >/dev/null 2>&1 || \
+     ! command -v uv >/dev/null 2>&1 || \
+     ! command -v podman >/dev/null 2>&1 || \
+     ! command -v jq >/dev/null 2>&1 || \
+     ! command -v yq >/dev/null 2>&1; then
+    all_deps_met=false
+  fi
+
+  if $all_deps_met; then
+    ui_success "Host prerequisites verified (Git, Homebrew, Python, uv, Podman, jq, yq)"
+  else
+    ui_info "Installing missing host prerequisites..."
+    state_init
+    for entry in "${minimal_phases[@]}"; do
+      local phase_name="${entry%%:*}"
+      local phase_script="${entry##*:}"
+      if ! state_run_phase "$phase_name" "$INSTALL_DIR/$phase_script"; then
+        ui_quit_prompt "Prerequisite setup failed at: $phase_name" "Resolve the issue and re-run ./bootstrap.sh"
+      fi
+    done
+  fi
+
+  # 2. Acquire and keep alive sudo credentials for dashboard session
+  echo
+  ui_step "Authenticating administrative privileges for platform networking..."
+  if sudo -v; then
+    # Keep sudo session alive in background until bootstrap exits
+    while true; do sudo -n -v; sleep 180; done 2>/dev/null &
+    local sudo_keeper_pid=$!
+    trap 'kill "$sudo_keeper_pid" 2>/dev/null || true' EXIT INT TERM
+    ui_success "Administrative session active"
+  else
+    ui_warning "Sudo authentication skipped — networking phase will prompt if required"
+  fi
+
+  # 3. Synchronize python dependencies
+  ui_step "Verifying platform Python dependencies via uv..."
+  (cd "$PROJECT_ROOT" && uv sync --quiet)
+  ui_success "Python environment ready"
+
+  # 4. Launch web dashboard
+  echo
+  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "  ${BOLD}${CYAN}AI Platform Web Dashboard Launching${RESET}"
+  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "  Opening web deck: ${BOLD}${GREEN}http://127.0.0.1:8888${RESET}"
+  echo -e "  Use the ${BOLD}Setup & Provision${RESET} tab to configure networking,"
+  echo -e "  generate security keys, and deploy all control plane services."
+  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo
+
+  # Auto-open browser in background
+  (sleep 1.2 && open "http://127.0.0.1:8888" 2>/dev/null || true) &
+
+  # Start FastAPI Uvicorn server in foreground
+  (cd "$PROJECT_ROOT" && uv run uvicorn platform.web.app:app --host 127.0.0.1 --port 8888)
+}
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 main() {
-  local command="${1:-install}"
+  local command="${1:-default}"
   shift 2>/dev/null || true
 
   case "$command" in
-    install)   run_install ;;
-    doctor)    run_doctor ;;
-    start)     run_start ;;
-    stop)      run_stop ;;
-    restart)   run_restart ;;
-    status)    run_status ;;
-    update)    run_update ;;
-    verify)    run_verify ;;
-    logs)      run_logs "$@" ;;
-    backup)    run_backup ;;
+    default|up)         run_bootstrap_default ;;
+    install)            
+      if [[ "${1:-}" == "--headless" || "${1:-}" == "-h" ]]; then
+        run_install
+      else
+        run_bootstrap_default
+      fi
+      ;;
+    headless)           run_install ;;
+    doctor)             run_doctor ;;
+    start)              run_start ;;
+    stop)               run_stop ;;
+    restart)            run_restart ;;
+    status)             run_status ;;
+    update)             run_update ;;
+    verify)             run_verify ;;
+    logs)               run_logs "$@" ;;
+    backup)             run_backup ;;
     restore)            run_restore "$@" ;;
     destroy)            run_destroy ;;
     connect-inference)  run_connect_inference ;;

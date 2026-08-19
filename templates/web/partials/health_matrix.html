@@ -1,0 +1,71 @@
+<div style="overflow-x: auto;">
+  <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.825rem;">
+    <thead>
+      <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-tertiary); font-size: 0.725rem; text-transform: uppercase; letter-spacing: 0.05em;">
+        <th style="padding: 0.75rem 1rem; font-weight: 600;">Service / Target</th>
+        <th style="padding: 0.75rem 1rem; font-weight: 600;">Host & Port</th>
+        <th style="padding: 0.75rem 1rem; font-weight: 600;">Probe Type</th>
+        <th style="padding: 0.75rem 1rem; font-weight: 600;">Status</th>
+        <th style="padding: 0.75rem 1rem; font-weight: 600;">Latency</th>
+        <th style="padding: 0.75rem 1rem; font-weight: 600;">Diagnostics</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in probes %}
+      <tr style="border-bottom: 1px solid var(--border-subtle); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+        
+        <!-- Name -->
+        <td style="padding: 0.85rem 1rem; font-weight: 600; color: #ffffff;">
+          {{ p.name }}
+        </td>
+
+        <!-- Target Host & Port -->
+        <td style="padding: 0.85rem 1rem;">
+          <code class="mono tabular-nums" style="color: var(--accent-cyan-hover);">{{ p.target }}</code>
+        </td>
+
+        <!-- Probe Type -->
+        <td style="padding: 0.85rem 1rem;">
+          <span class="badge badge-neutral mono" style="font-size: 0.675rem;">{{ p.type }}</span>
+        </td>
+
+        <!-- Status Badge -->
+        <td style="padding: 0.85rem 1rem;">
+          {% if p.passed %}
+            <span class="badge badge-healthy">
+              <span class="badge-dot pulse-dot" aria-hidden="true"></span>
+              <span>ONLINE</span>
+            </span>
+          {% else %}
+            <span class="badge badge-unhealthy">
+              <span class="badge-dot" aria-hidden="true"></span>
+              <span>OFFLINE</span>
+            </span>
+          {% endif %}
+        </td>
+
+        <!-- Latency -->
+        <td style="padding: 0.85rem 1rem;" class="mono tabular-nums">
+          {% if p.passed %}
+            <span style="color: {% if p.latency_ms < 5.0 %}var(--status-emerald-text){% elif p.latency_ms < 50.0 %}var(--accent-cyan-hover){% else %}var(--status-amber-text){% endif %}; font-weight: 600;">
+              {{ p.latency_ms }} ms
+            </span>
+          {% else %}
+            <span style="color: var(--text-tertiary);">—</span>
+          {% endif %}
+        </td>
+
+        <!-- Diagnostics / Error -->
+        <td style="padding: 0.85rem 1rem; font-size: 0.775rem;">
+          {% if p.passed %}
+            <span style="color: var(--text-secondary);">Probe responsive</span>
+          {% else %}
+            <span class="mono" style="color: var(--status-rose-text);">{{ p.error or p.status }}</span>
+          {% endif %}
+        </td>
+
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

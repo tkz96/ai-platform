@@ -3,288 +3,145 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}AI Platform — Control Plane & Cluster Dashboard{% endblock %}</title>
+  <meta name="description" content="AI Platform Control Plane & Inference Cluster Management Dashboard">
+  
+  <!-- Custom Branded SVG Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230ea5e9'/><path d='M9 22L16 8L23 22H19.5L16 14.5L12.5 22H9Z' fill='%23060911'/></svg>">
+  
+  <title>{% block title %}AI Platform — Control Plane & Cluster Deck{% endblock %}</title>
 
-  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <!-- Google Fonts: Outfit (Display/Headlines), Plus Jakarta Sans (Body), JetBrains Mono (Code/Data) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- HTMX & Alpine.js -->
+  <!-- Core Dashboard Design System Stylesheet -->
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+
+  <!-- HTMX, SSE Extension & Alpine.js -->
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-  <style>
-    /* UI Craft Design Tokens: Graphite Preset + Cyan/Emerald Accent Spine */
-    :root {
-      --bg-dark: #090d16;
-      --bg-surface: #111827;
-      --bg-surface-elevated: #1f2937;
-      --bg-card: rgba(17, 24, 39, 0.75);
-      --border-subtle: rgba(255, 255, 255, 0.07);
-      --border-card: rgba(255, 255, 255, 0.1);
-      --border-hover: rgba(6, 182, 212, 0.35);
-      
-      --accent-cyan: #06b6d4;
-      --accent-cyan-light: #22d3ee;
-      --accent-cyan-glow: rgba(6, 182, 212, 0.15);
-      
-      --status-emerald: #10b981;
-      --status-amber: #f59e0b;
-      --status-rose: #f43f5e;
-      --status-slate: #6b7280;
+  <script>
+    // Global toast notifications handler
+    document.addEventListener('alpine:init', () => {
+      Alpine.store('toasts', {
+        items: [],
+        add(message, type = 'info') {
+          const id = Date.now();
+          this.items.push({ id, message, type });
+          setTimeout(() => {
+            this.items = this.items.filter(t => t.id !== id);
+          }, 3500);
+        }
+      });
+    });
 
-      --text-main: #f9fafb;
-      --text-muted: #9ca3af;
-      --text-subtle: #6b7280;
-
-      /* UI Craft Radius Scale: Inputs 6px, Cards 10px, Modals 14px */
-      --radius-sm: 6px;
-      --radius-md: 10px;
-      --radius-lg: 14px;
+    function copyToClipboard(text, label = 'Copied to clipboard!') {
+      navigator.clipboard.writeText(text).then(() => {
+        if (window.Alpine) {
+          Alpine.store('toasts').add(label, 'success');
+        }
+      });
     }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background-color: var(--bg-dark);
-      background-image: 
-        radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 40%),
-        radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.06) 0px, transparent 40%),
-        radial-gradient(at 50% 100%, rgba(15, 23, 42, 0.5) 0px, transparent 60%);
-      background-attachment: fixed;
-      color: var(--text-main);
-      min-height: 100vh;
-      line-height: 1.5;
-      padding-bottom: 4rem;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    .container {
-      max-width: 1340px;
-      margin: 0 auto;
-      padding: 0 1.5rem;
-    }
-
-    /* Glassmorphism Card (UI Craft standard) */
-    .glass-card {
-      background: var(--bg-card);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border-card);
-      border-radius: var(--radius-md);
-      box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.3);
-      transition: border-color 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out;
-    }
-
-    .glass-card:hover {
-      border-color: var(--border-hover);
-      box-shadow: 0 8px 30px 0 rgba(6, 182, 212, 0.08);
-    }
-
-    /* Header Navigation */
-    header {
-      border-bottom: 1px solid var(--border-subtle);
-      background: rgba(9, 13, 22, 0.85);
-      backdrop-filter: blur(14px);
-      position: sticky;
-      top: 0;
-      z-index: 40;
-    }
-
-    /* UI Craft Tabular Numbers for Data */
-    .tabular-nums {
-      font-variant-numeric: tabular-nums;
-      font-feature-settings: "tnum";
-    }
-
-    .mono {
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Status Badges */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 9999px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-    }
-
-    .badge-healthy {
-      background: rgba(16, 185, 129, 0.12);
-      color: #34d399;
-      border: 1px solid rgba(16, 185, 129, 0.25);
-    }
-
-    .badge-unhealthy {
-      background: rgba(244, 63, 94, 0.12);
-      color: #fb7185;
-      border: 1px solid rgba(244, 63, 94, 0.25);
-    }
-
-    .badge-warning {
-      background: rgba(245, 158, 11, 0.12);
-      color: #fbbf24;
-      border: 1px solid rgba(245, 158, 11, 0.25);
-    }
-
-    .badge-stopped {
-      background: rgba(156, 163, 175, 0.1);
-      color: #9ca3af;
-      border: 1px solid rgba(156, 163, 175, 0.2);
-    }
-
-    /* UI Craft Buttons */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.4rem;
-      padding: 0.38rem 0.75rem;
-      border-radius: var(--radius-sm);
-      font-size: 0.8rem;
-      font-weight: 500;
-      cursor: pointer;
-      border: 1px solid transparent;
-      transition: all 0.15s ease-out;
-      text-decoration: none;
-      user-select: none;
-    }
-
-    .btn-primary {
-      background: var(--accent-cyan);
-      color: #090d16;
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
-    }
-
-    .btn-primary:hover {
-      background: var(--accent-cyan-light);
-      transform: translateY(-1px);
-    }
-
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.1);
-      color: var(--text-main);
-    }
-
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-
-    .btn-danger {
-      background: rgba(244, 63, 94, 0.12);
-      border-color: rgba(244, 63, 94, 0.3);
-      color: #fda4af;
-    }
-
-    .btn-danger:hover {
-      background: rgba(244, 63, 94, 0.22);
-    }
-
-    /* Modal Backdrop & Container */
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(3, 7, 18, 0.82);
-      backdrop-filter: blur(8px);
-      z-index: 50;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1.5rem;
-    }
-
-    .modal-content {
-      width: 100%;
-      max-width: 820px;
-      max-height: 85vh;
-      overflow-y: auto;
-      background: #0f172a;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: var(--radius-lg);
-      padding: 1.75rem;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-    }
-
-    /* Terminal Window Box */
-    .terminal-box {
-      background: #030712;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: var(--radius-sm);
-      padding: 1rem;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      color: #38bdf8;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-      line-height: 1.6;
-    }
-
-    .terminal-box.error {
-      color: #f87171;
-      border-color: rgba(248, 113, 113, 0.25);
-    }
-
-    /* Accessibility / Reduced Motion */
-    @media (prefers-reduced-motion: reduce) {
-      *, ::before, ::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
-  </style>
+  </script>
 </head>
-<body x-data="{ modalOpen: false, logsOpen: false }">
+<body x-data>
+
+  <!-- Accessibility: Skip Link for Keyboard Users -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation Header -->
-  <header>
-    <div class="container" style="display: flex; align-items: center; justify-content: space-between; height: 3.75rem;">
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <div style="width: 2.2rem; height: 2.2rem; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--accent-cyan), #10b981); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #090d16; font-size: 0.95rem;">
+  <header role="banner" style="border-bottom: 1px solid var(--border-subtle); background: rgba(6, 9, 17, 0.88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); position: sticky; top: 0; z-index: 40;">
+    <div class="container" style="display: flex; align-items: center; justify-content: space-between; height: 4rem;">
+      
+      <!-- Brand & Platform Identity -->
+      <div style="display: flex; align-items: center; gap: 0.9rem;">
+        <div style="width: 2.35rem; height: 2.35rem; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--accent-primary), #10b981); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; color: #060911; font-size: 1.05rem; box-shadow: 0 2px 12px rgba(14, 165, 233, 0.35);">
           AI
         </div>
         <div>
-          <h1 style="font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; color: #ffffff;">AI Platform Control Plane</h1>
-          <p style="font-size: 0.725rem; color: var(--text-muted);">Mac Mini Orchestrator · Private Subnet <span class="mono">10.42.0.0/24</span></p>
+          <div style="display: flex; align-items: center; gap: 0.55rem;">
+            <h1 style="font-size: 1.05rem; font-weight: 700; color: #ffffff; margin: 0;">AI Platform control plane</h1>
+            <span class="badge badge-cyan" style="font-size: 0.65rem; font-weight: 700;">v0.1.0</span>
+          </div>
+          <p style="font-size: 0.725rem; color: var(--text-secondary); margin: 0;">
+            Mac Mini orchestrator · Private subnet <span class="mono tabular-nums" style="color: var(--text-code);">10.42.0.0/24</span>
+          </p>
         </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 1rem;">
-        <div class="badge badge-healthy">
-          <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor"><circle cx="3" cy="3" r="3"/></svg>
-          Control Plane Active
+      <!-- Quick Action Controls & Live Status -->
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        
+        <!-- Live Cluster State Indicator -->
+        <div class="badge badge-healthy" title="Control plane active on Mac Mini">
+          <span class="badge-dot pulse-dot" aria-hidden="true"></span>
+          <span>Control plane active</span>
         </div>
 
-        <button class="btn btn-secondary" onclick="htmx.trigger('body', 'refreshAll')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-          Refresh
+        <!-- Platform Audit Button -->
+        <button 
+          class="btn btn-secondary btn-sm"
+          hx-get="/api/setup/audit"
+          hx-target="#modal-container"
+          hx-swap="innerHTML"
+          title="Run full platform diagnostic audit"
+          aria-label="Run platform health audit">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Audit</span>
         </button>
+
+        <!-- Global Refresh Trigger Button -->
+        <button 
+          class="btn btn-secondary btn-sm" 
+          onclick="htmx.trigger('body', 'refreshAll'); if(window.Alpine) Alpine.store('toasts').add('Refreshed live cluster metrics', 'info');"
+          aria-label="Refresh all live cluster metrics"
+          title="Refresh all metrics">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          <span>Refresh</span>
+        </button>
+
       </div>
     </div>
   </header>
 
-  <!-- Main Viewport -->
-  <main class="container" style="margin-top: 1.75rem;">
+  <!-- Main Content Landmark -->
+  <main id="main-content" class="container" style="margin-top: 1.85rem;">
     {% block content %}{% endblock %}
   </main>
 
-  <!-- Dynamic Modal & Drawer Containers -->
-  <div id="modal-container"></div>
-  <div id="logs-container"></div>
+  <!-- Accessible Footer -->
+  <footer role="contentinfo" class="container" style="margin-top: 4.5rem; border-top: 1px solid var(--border-subtle); padding-top: 1.5rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--text-tertiary); flex-wrap: wrap; gap: 1rem;">
+    <div>
+      <span>AI Platform &copy; 2026. Control plane: <code class="mono">10.42.0.1</code> | Inference host: <code class="mono">10.42.0.2</code></span>
+    </div>
+    <div style="display: flex; gap: 1.25rem;">
+      <a href="http://localhost:4000" target="_blank" rel="noopener noreferrer" style="color: var(--text-secondary); text-decoration: none;">LiteLLM (:4000)</a>
+      <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer" style="color: var(--text-secondary); text-decoration: none;">Langfuse (:3000)</a>
+      <a href="http://localhost:8080" target="_blank" rel="noopener noreferrer" style="color: var(--text-secondary); text-decoration: none;">Caddy (:8080)</a>
+    </div>
+  </footer>
+
+  <!-- Toast Notification Stack -->
+  <div class="toast-container" aria-live="polite" aria-atomic="true">
+    <template x-for="toast in $store.toasts.items" :key="toast.id">
+      <div class="toast" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 transform translate-y-2" x-transition:enter-end="opacity-100 transform translate-y-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--status-emerald-text)" stroke-width="2.5" aria-hidden="true" x-show="toast.type === 'success'"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2.5" aria-hidden="true" x-show="toast.type === 'info'"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span x-text="toast.message"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- Dynamic Modal & Drawer Injectors for HTMX -->
+  <div id="modal-container" aria-live="polite"></div>
+  <div id="logs-container" aria-live="polite"></div>
 
 </body>
 </html>

@@ -1,0 +1,636 @@
+/* ==========================================================================
+   AI PLATFORM DESIGN SYSTEM — PREMIUM COMMAND DECK
+   Crafted following Redesign Standards (Anti-Generic AI Slop)
+   Stack: Vanilla CSS + CSS Variables + High-End Glass & Micro-Interactions
+   ========================================================================== */
+
+/* --- 1. DESIGN TOKENS & CALIBRATED PALETTE --- */
+:root {
+  /* Canvas & Atmospheric Surfaces */
+  --bg-canvas: #060911;
+  --bg-surface: #0b111e;
+  --bg-surface-elevated: #111a2d;
+  --bg-surface-glass: rgba(11, 17, 30, 0.78);
+  --bg-card: rgba(14, 22, 38, 0.72);
+  --bg-card-hover: rgba(20, 31, 53, 0.88);
+  --bg-input: #080d18;
+  --bg-terminal: #03060c;
+
+  /* Refined Hairline Borders & Glass Refraction */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-card: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-glow: rgba(14, 165, 233, 0.35);
+
+  /* Inner Glass Refraction Highlights */
+  --glass-inner-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  --glass-inner-shadow-subtle: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+
+  /* Cohesive Electric Cyan/Sky Accent (Desaturated to ~75% for sophistication) */
+  --accent-primary: #0ea5e9;
+  --accent-primary-hover: #38bdf8;
+  --accent-primary-glow: rgba(14, 165, 233, 0.18);
+  --accent-primary-subtle: rgba(14, 165, 233, 0.09);
+  --accent-primary-border: rgba(14, 165, 233, 0.28);
+
+  /* Status Tokens (WCAG AAA Contrast on dark surfaces) */
+  --status-emerald: #10b981;
+  --status-emerald-text: #34d399;
+  --status-emerald-bg: rgba(16, 185, 129, 0.1);
+  --status-emerald-border: rgba(16, 185, 129, 0.25);
+
+  --status-amber: #f59e0b;
+  --status-amber-text: #fbbf24;
+  --status-amber-bg: rgba(245, 158, 11, 0.1);
+  --status-amber-border: rgba(245, 158, 11, 0.25);
+
+  --status-rose: #f43f5e;
+  --status-rose-text: #fb7185;
+  --status-rose-bg: rgba(244, 63, 94, 0.1);
+  --status-rose-border: rgba(244, 63, 94, 0.25);
+
+  --status-slate-text: #94a3b8;
+  --status-slate-bg: rgba(148, 163, 184, 0.08);
+  --status-slate-border: rgba(148, 163, 184, 0.18);
+
+  /* Typography Scale */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --text-code: #38bdf8;
+
+  /* Fonts: Outfit Display + Plus Jakarta Sans Body + JetBrains Mono Code */
+  --font-display: 'Outfit', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Radius System: 5px inner inputs, 10px cards, 16px modals */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Colored Ambient Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 6px -1px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 20px 48px -8px rgba(0, 0, 0, 0.75), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-accent-glow: 0 0 24px -2px rgba(14, 165, 233, 0.25);
+}
+
+/* --- 2. RESET & FOUNDATIONS --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 15px;
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-canvas);
+  /* Atmospheric background: subtle radial highlights + micro dot matrix */
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(14, 165, 233, 0.09) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 45%),
+    radial-gradient(circle at 50% 100%, rgba(11, 17, 30, 0.8) 0%, transparent 70%),
+    radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 24px 24px;
+  background-attachment: fixed;
+  color: var(--text-primary);
+  line-height: 1.55;
+  min-height: 100vh;
+  padding-bottom: 5rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- 3. ACCESSIBILITY & SKIP LINK --- */
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 1.5rem;
+  background: var(--accent-primary);
+  color: #060911;
+  font-weight: 700;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-sm);
+  z-index: 200;
+  text-decoration: none;
+  box-shadow: var(--shadow-lg);
+}
+
+.skip-link:focus {
+  top: 1.25rem;
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --- 4. TYPOGRAPHY RULES --- */
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+code {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-xs);
+  font-size: 0.85em;
+  color: var(--text-code);
+  border: 1px solid var(--border-subtle);
+}
+
+/* --- 5. CONTAINER & LAYOUT CONSTRAINTS --- */
+.container {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* --- 6. ELEVATED TRUE GLASSMORPHISM --- */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md), var(--glass-inner-shadow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.glass-card:hover {
+  border-color: var(--border-glow);
+  box-shadow: var(--shadow-lg), var(--glass-inner-shadow), 0 0 20px -4px rgba(14, 165, 233, 0.12);
+  transform: translateY(-1px);
+}
+
+.glass-card-elevated {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg), var(--glass-inner-shadow);
+}
+
+/* --- 7. BUTTONS & TACTILE FEEDBACK --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Active / Pressed state tactile feedback */
+.btn:active {
+  transform: scale(0.97) translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #060911;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(14, 165, 233, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-primary:hover {
+  background: var(--accent-primary-hover);
+  box-shadow: var(--shadow-accent-glow);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-card);
+  color: var(--text-primary);
+  box-shadow: var(--glass-inner-shadow-subtle);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-strong);
+  color: #ffffff;
+}
+
+.btn-danger {
+  background: var(--status-rose-bg);
+  border-color: var(--status-rose-border);
+  color: var(--status-rose-text);
+  box-shadow: var(--glass-inner-shadow-subtle);
+}
+
+.btn-danger:hover {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.45);
+}
+
+.btn-sm {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.775rem;
+  border-radius: var(--radius-xs);
+}
+
+.btn-icon {
+  padding: 0.42rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-icon:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-card);
+}
+
+/* --- 8. CALIBRATED STATUS BADGES --- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.725rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.badge-healthy {
+  background: var(--status-emerald-bg);
+  color: var(--status-emerald-text);
+  border: 1px solid var(--status-emerald-border);
+}
+
+.badge-unhealthy {
+  background: var(--status-rose-bg);
+  color: var(--status-rose-text);
+  border: 1px solid var(--status-rose-border);
+}
+
+.badge-warning {
+  background: var(--status-amber-bg);
+  color: var(--status-amber-text);
+  border: 1px solid var(--status-amber-border);
+}
+
+.badge-stopped, .badge-neutral {
+  background: var(--status-slate-bg);
+  color: var(--status-slate-text);
+  border: 1px solid var(--status-slate-border);
+}
+
+.badge-cyan {
+  background: var(--accent-primary-subtle);
+  color: var(--accent-primary-hover);
+  border: 1px solid var(--accent-primary-border);
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+.pulse-dot {
+  animation: pulse-live 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+/* --- 9. TABS NAVIGATION --- */
+.tab-list {
+  display: flex;
+  gap: 0.35rem;
+  background: rgba(8, 13, 24, 0.85);
+  border: 1px solid var(--border-subtle);
+  padding: 0.3rem;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm), var(--glass-inner-shadow-subtle);
+  overflow-x: auto;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.15rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tab-btn.active {
+  background: var(--bg-surface-elevated);
+  color: #ffffff;
+  border-color: var(--border-card);
+  box-shadow: var(--shadow-sm), var(--glass-inner-shadow);
+}
+
+.tab-btn.active .tab-counter {
+  background: var(--accent-primary);
+  color: #060911;
+  font-weight: 700;
+}
+
+.tab-counter {
+  font-size: 0.7rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* --- 10. COMMAND METRIC COCKPIT --- */
+.metric-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.15rem;
+}
+
+.metric-card {
+  padding: 1.25rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
+}
+
+.metric-card-hero {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(14, 22, 38, 0.85) 100%);
+  border-color: var(--accent-primary-border);
+}
+
+.metric-title {
+  font-size: 0.725rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.metric-value {
+  font-family: var(--font-display);
+  font-size: 2.15rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.035em;
+  margin: 0.2rem 0 0.1rem 0;
+  line-height: 1.15;
+}
+
+.metric-subtext {
+  font-size: 0.775rem;
+  color: var(--text-secondary);
+}
+
+/* --- 11. TERMINAL DISPLAY --- */
+.terminal-box {
+  background: var(--bg-terminal);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-code);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.65;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.terminal-box.error {
+  color: var(--status-rose-text);
+  border-color: var(--status-rose-border);
+  background: rgba(244, 63, 94, 0.04);
+}
+
+/* --- 12. OVERLAY MODALS & SLIDE DRAWERS --- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 12, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 860px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: #0d1424;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 1.85rem;
+  box-shadow: var(--shadow-lg), var(--glass-inner-shadow);
+}
+
+/* --- 13. FORM CONTROLS --- */
+.input-text, .input-select, .input-textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 0.52rem 0.85rem;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.input-text:focus, .input-select:focus, .input-textarea:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25), inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.input-textarea {
+  font-family: var(--font-mono);
+  resize: vertical;
+  min-height: 85px;
+}
+
+/* --- 14. HTMX SKELETON & SPINNER LOADERS --- */
+.htmx-indicator {
+  display: none;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline-flex;
+  opacity: 1;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* --- 15. TOPOLOGY CONNECTOR --- */
+.topology-container {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .topology-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.link-bridge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 0.5rem;
+  text-align: center;
+}
+
+.link-line {
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-primary), var(--status-emerald));
+  margin: 0.6rem 0;
+  position: relative;
+}
+
+.link-line::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-emerald);
+  box-shadow: 0 0 12px var(--status-emerald);
+}
+
+/* --- 16. TOAST NOTIFICATION STACK --- */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: #0f172a;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 1.1rem;
+  font-size: 0.825rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg), var(--glass-inner-shadow);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}

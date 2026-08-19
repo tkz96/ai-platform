@@ -1,0 +1,388 @@
+<!-- =========================================================================
+     SETUP & PROVISIONING CHECKLIST PARTIAL
+     Empirical Ground-Truth State, One-Click Runner & Structured Remediation
+     ========================================================================= -->
+
+<div style="display: flex; flex-direction: column; gap: 1.5rem;" x-data="{
+  isRunning: false,
+  activePhase: '',
+  terminalOutput: '',
+  showRemediation: {},
+  
+  startPhase(phaseId) {
+    this.isRunning = true;
+    this.activePhase = phaseId;
+    this.terminalOutput += `\n[${new Date().toLocaleTimeString()}] >>> Triggering: ${phaseId}\n`;
+    
+    const eventSource = new EventSource(`/api/setup/stream?phase=${phaseId}`);
+    
+    eventSource.addEventListener('log', (e) => {
+      const data = JSON.parse(e.data);
+      this.terminalOutput += data.line + '\n';
+      this.scrollTerminal();
+    });
+
+    eventSource.addEventListener('step_start', (e) => {
+      const data = JSON.parse(e.data);
+      if (window.Alpine) Alpine.store('toasts').add(`Starting: ${data.name}`, 'info');
+    });
+
+    eventSource.addEventListener('step_done', (e) => {
+      const data = JSON.parse(e.data);
+      if (window.Alpine) Alpine.store('toasts').add(`Phase ${data.phase_id} completed!`, 'success');
+      htmx.trigger('#setup-checklist-container', 'refreshStatus');
+      htmx.trigger('body', 'refreshAll');
+    });
+
+    eventSource.addEventListener('error', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.remediation) {
+          this.showRemediation[data.phase_id] = true;
+        }
+      } catch (err) {}
+      if (window.Alpine) Alpine.store('toasts').add('Phase encountered an error. Check terminal & remediation.', 'info');
+      eventSource.close();
+      this.isRunning = false;
+      this.activePhase = '';
+      htmx.trigger('#setup-checklist-container', 'refreshStatus');
+    });
+
+    eventSource.addEventListener('complete', (e) => {
+      const data = JSON.parse(e.data);
+      eventSource.close();
+      this.isRunning = false;
+      this.activePhase = '';
+      htmx.trigger('#setup-checklist-container', 'refreshStatus');
+      htmx.trigger('body', 'refreshAll');
+      if (data.success) {
+        if (window.Alpine) Alpine.store('toasts').add('Platform successfully provisioned!', 'success');
+        setTimeout(() => {
+          // Switch to services tab on first successful full run
+          const sTab = document.querySelector('#tab-services');
+          if (sTab) sTab.click();
+        }, 1200);
+      }
+    });
+
+    eventSource.onerror = () => {
+      eventSource.close();
+      this.isRunning = false;
+      this.activePhase = '';
+      htmx.trigger('#setup-checklist-container', 'refreshStatus');
+    };
+  },
+
+  scrollTerminal() {
+    this.$nextTick(() => {
+      const term = document.getElementById('setup-live-terminal');
+      if (term) term.scrollTop = term.scrollHeight;
+    });
+  },
+
+  clearTerminal() {
+    this.terminalOutput = '';
+  }
+}">
+
+  <!-- 1. Overall Readiness Header Card -->
+  <div class="glass-card" style="padding: 1.65rem; border-top: 2px solid {% if summary.is_fully_provisioned %}var(--status-emerald){% else %}var(--accent-primary){% endif %};">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <h2 style="font-size: 1.25rem; font-weight: 700; color: #ffffff; margin: 0;">Platform setup & provisioning</h2>
+          <span class="badge {% if summary.is_fully_provisioned %}badge-healthy{% else %}badge-cyan{% endif %}" style="font-size: 0.725rem; font-weight: 700;">
+            {{ summary.completed_phases }} / {{ summary.total_phases }} phases complete
+          </span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; max-width: 650px;">
+          {% if summary.is_fully_provisioned %}
+            All control plane prerequisites, networking links, security credentials, and container stacks are fully provisioned and operational.
+          {% else %}
+            Execute all remaining configuration phases sequentially or run individual steps below to bring the platform online.
+          {% endif %}
+        </p>
+      </div>
+
+      <!-- One-Click Provision All Button -->
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        {% if not summary.is_fully_provisioned %}
+        <button 
+          class="btn btn-primary" 
+          :disabled="isRunning"
+          @click="startPhase('all')"
+          title="Run all remaining uncompleted provisioning phases">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" x-show="!isRunning"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" x-show="isRunning"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          <span x-text="isRunning ? 'Provisioning in progress...' : 'Provision all remaining phases'"></span>
+        </button>
+        {% else %}
+        <button 
+          class="btn btn-secondary" 
+          :disabled="isRunning"
+          @click="startPhase('all')"
+          title="Re-run and verify all provisioning steps">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span>Re-verify all phases</span>
+        </button>
+        {% endif %}
+
+        <button 
+          class="btn btn-secondary" 
+          hx-get="/api/setup/audit" 
+          hx-target="#modal-container" 
+          hx-swap="innerHTML"
+          title="Run comprehensive diagnostic health audit">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Health audit</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Readiness Progress Bar -->
+    <div style="margin-top: 1.35rem;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em; margin-bottom: 0.35rem;">
+        <span>Setup progress</span>
+        <span class="mono tabular-nums" style="color: {% if summary.is_fully_provisioned %}var(--status-emerald-text){% else %}var(--accent-primary-hover){% endif %};">{{ summary.percent_ready }}%</span>
+      </div>
+      <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: var(--radius-full); overflow: hidden;">
+        <div style="width: {{ summary.percent_ready }}%; height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--status-emerald)); transition: width 0.4s ease;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Phase Cards Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.25rem;">
+    {% for p in phases %}
+    <div class="glass-card" style="padding: 1.35rem; display: flex; flex-direction: column; justify-content: space-between; border-top: 2px solid {% if p.status == 'completed' %}var(--status-emerald){% elif p.status == 'failed' %}var(--status-rose){% else %}var(--border-subtle){% endif %};">
+      
+      <div>
+        <!-- Phase Top Header -->
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.65rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.45rem;">
+              <span class="mono" style="font-size: 0.7rem; color: var(--text-tertiary); background: rgba(255,255,255,0.04); padding: 0.1rem 0.35rem; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle);">
+                {{ p.id }}
+              </span>
+              <span style="font-size: 0.725rem; font-weight: 700; text-transform: uppercase; color: var(--accent-primary-hover); letter-spacing: 0.04em;">
+                {{ p.category }}
+              </span>
+            </div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: #ffffff; margin-top: 0.25rem;">{{ p.name }}</h3>
+          </div>
+
+          <div>
+            {% if p.status == 'completed' %}
+              <span class="badge badge-healthy">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Satisfied</span>
+              </span>
+            {% elif p.status == 'failed' %}
+              <span class="badge badge-unhealthy">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>Failed</span>
+              </span>
+            {% else %}
+              <span class="badge badge-stopped">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span>Pending</span>
+              </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <p style="font-size: 0.775rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.85rem;">
+          {{ p.description }}
+        </p>
+
+        <!-- Empirical Details Strip -->
+        <div style="background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; margin-bottom: 0.95rem; font-size: 0.75rem;">
+          {% if p.id == '05-podman' %}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-tertiary);">VM instance:</span>
+              <span class="mono" style="color: {% if p.empirical_details.running %}var(--status-emerald-text){% else %}var(--text-secondary){% endif %}; font-weight: 600;">
+                {{ 'Running (ai-platform)' if p.empirical_details.running else ('Stopped' if p.empirical_details.machine_exists else 'Not created') }}
+              </span>
+            </div>
+          {% elif p.id == '06a-networking' %}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-tertiary);">Static IP 10.42.0.1:</span>
+              <span class="mono" style="color: {% if p.empirical_details.ip_10_42_0_1_configured %}var(--status-emerald-text){% else %}var(--status-rose-text){% endif %}; font-weight: 600;">
+                {{ 'Bound & active' if p.empirical_details.ip_10_42_0_1_configured else 'Unconfigured' }}
+              </span>
+            </div>
+          {% elif p.id == '07-secrets' %}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-tertiary);">.env & SSH keys:</span>
+              <span class="mono" style="color: {% if p.empirical_details.env_file_exists and p.empirical_details.cluster_ssh_key_exists %}var(--status-emerald-text){% else %}var(--status-slate-text){% endif %}; font-weight: 600;">
+                {{ 'Generated' if p.empirical_details.env_file_exists and p.empirical_details.cluster_ssh_key_exists else 'Missing' }}
+              </span>
+            </div>
+          {% elif p.id == '08-render' %}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-tertiary);">Compose & Caddyfile:</span>
+              <span class="mono" style="color: {% if p.empirical_details.compose_yaml_exists and p.empirical_details.caddyfile_exists %}var(--status-emerald-text){% else %}var(--status-slate-text){% endif %}; font-weight: 600;">
+                {{ 'Rendered' if p.empirical_details.compose_yaml_exists and p.empirical_details.caddyfile_exists else 'Pending' }}
+              </span>
+            </div>
+          {% elif p.id == '09-deploy' %}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-tertiary);">Containers:</span>
+              <span class="mono tabular-nums" style="color: {% if p.empirical_details.matched_services and p.empirical_details.matched_services|length == 6 %}var(--status-emerald-text){% else %}var(--status-rose-text){% endif %}; font-weight: 600;">
+                {{ p.empirical_details.matched_services|length if p.empirical_details.matched_services else 0 }} / 6 running
+              </span>
+            </div>
+          {% elif p.id == '10-verify' %}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-tertiary);">Platform ports:</span>
+              <span class="mono tabular-nums" style="color: {% if p.empirical_details.open_ports and p.empirical_details.open_ports == 6 %}var(--status-emerald-text){% else %}var(--status-rose-text){% endif %}; font-weight: 600;">
+                {{ p.empirical_details.open_ports if p.empirical_details.open_ports else 0 }} / 6 open
+              </span>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Phase Actions & Remediation Toggle -->
+      <div style="border-top: 1px solid var(--border-subtle); padding-top: 0.95rem; margin-top: auto;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+          
+          <div style="display: flex; align-items: center; gap: 0.4rem;">
+            {% if p.status != 'completed' %}
+            <button 
+              class="btn btn-primary btn-sm" 
+              :disabled="isRunning"
+              @click="startPhase('{{ p.id }}')"
+              title="Execute phase {{ p.id }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Run phase</span>
+            </button>
+            {% else %}
+            <button 
+              class="btn btn-secondary btn-sm" 
+              :disabled="isRunning"
+              @click="startPhase('{{ p.id }}')"
+              title="Re-run phase {{ p.id }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Re-run</span>
+            </button>
+            {% endif %}
+
+            {% if p.requires_sudo %}
+            <span class="badge badge-neutral" style="font-size: 0.65rem;" title="Requires sudo permissions">
+              sudo
+            </span>
+            {% endif %}
+          </div>
+
+          <!-- Structured Troubleshooting Toggle -->
+          {% if p.remediation %}
+          <button 
+            class="btn btn-secondary btn-sm" 
+            @click="showRemediation['{{ p.id }}'] = !showRemediation['{{ p.id }}']"
+            style="font-size: 0.725rem;"
+            title="View structured troubleshooting checklist">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span x-text="showRemediation['{{ p.id }}'] ? 'Hide guide' : 'Troubleshoot'"></span>
+          </button>
+          {% endif %}
+
+        </div>
+
+        <!-- Structured Remediation & Troubleshooting Drawer -->
+        {% if p.remediation %}
+        <div 
+          x-show="showRemediation['{{ p.id }}']" 
+          x-transition:enter="transition ease-out duration-180"
+          x-transition:enter-start="opacity-0 transform -translate-y-1"
+          x-transition:enter-end="opacity-100 transform translate-y-0"
+          style="margin-top: 0.85rem; padding: 0.85rem; background: rgba(244, 63, 94, 0.04); border: 1px solid var(--status-rose-border); border-radius: var(--radius-sm); font-size: 0.75rem;">
+          
+          <div style="font-weight: 700; color: var(--status-rose-text); margin-bottom: 0.45rem; display: flex; align-items: center; gap: 0.4rem;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>Possible causes & remediation:</span>
+          </div>
+
+          {% for issue in p.remediation.common_issues %}
+          <div style="margin-bottom: 0.65rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.5rem;">
+            <div style="color: #ffffff; font-weight: 600;">• {{ issue.symptom }}</div>
+            <div style="color: var(--text-tertiary); margin: 0.15rem 0 0.35rem 0.65rem;">
+              <em>Root cause:</em> {{ issue.root_cause }}
+            </div>
+            
+            <div style="margin-left: 0.65rem;">
+              {% for step in issue.fix_steps %}
+              <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">
+                → {{ step }}
+              </div>
+              {% endfor %}
+            </div>
+
+            {% if issue.quick_fix_command %}
+            <div style="margin: 0.4rem 0 0 0.65rem; display: flex; align-items: center; gap: 0.45rem;">
+              <code class="mono" style="font-size: 0.7rem; color: var(--accent-primary-hover); background: #060911;">{{ issue.quick_fix_command }}</code>
+              <button 
+                class="btn btn-secondary btn-sm" 
+                style="padding: 0.15rem 0.45rem; font-size: 0.675rem;"
+                @click="copyToClipboard('{{ issue.quick_fix_command }}', 'Fix command copied!')"
+                title="Copy command to clipboard">
+                Copy
+              </button>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; color: var(--text-tertiary); font-size: 0.7rem;">
+            <span>Manual terminal command:</span>
+            <code class="mono" style="color: var(--text-secondary);">{{ p.remediation.manual_command }}</code>
+          </div>
+
+        </div>
+        {% endif %}
+
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 3. Live Streaming Terminal Console -->
+  <div class="glass-card" style="padding: 1.35rem;" role="region" aria-label="Provisioning Execution Terminal">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <span class="badge-dot" :class="isRunning ? 'pulse-dot' : ''" :style="{ background: isRunning ? 'var(--status-emerald)' : 'var(--text-tertiary)' }" aria-hidden="true"></span>
+        <h3 style="font-size: 0.95rem; font-weight: 700; color: #ffffff; margin: 0;">Provisioning console output</h3>
+        <span class="badge badge-cyan" style="font-size: 0.65rem;" x-show="isRunning" x-text="`Executing: ${activePhase}`"></span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 0.45rem;">
+        <button 
+          class="btn btn-secondary btn-sm" 
+          @click="copyToClipboard(terminalOutput, 'Console logs copied!')"
+          :disabled="!terminalOutput"
+          title="Copy full terminal output">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Copy logs</span>
+        </button>
+
+        <button 
+          class="btn btn-secondary btn-sm" 
+          @click="clearTerminal()"
+          :disabled="!terminalOutput"
+          title="Clear console output">
+          <span>Clear</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Monospaced Terminal Box -->
+    <div 
+      id="setup-live-terminal" 
+      class="terminal-box" 
+      style="height: 240px; overflow-y: auto; font-size: 0.775rem;"
+      x-text="terminalOutput || 'Waiting to execute provisioning phases... Click \'Provision all remaining phases\' or run an individual phase above.'">
+    </div>
+  </div>
+
+</div>
