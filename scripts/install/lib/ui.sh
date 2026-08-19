@@ -123,6 +123,10 @@ ui_step() {
   echo -e "  ${CYAN}${SYM_ARROW}${RESET} $1"
 }
 
+is_noninteractive() {
+  [[ "${NONINTERACTIVE:-0}" == "1" ]] || ! [[ -t 0 ]]
+}
+
 ui_recoverable() {
   local error_msg="$1"
   local guidance="$2"
@@ -134,6 +138,12 @@ ui_recoverable() {
   echo -e "  ${BOLD}How to fix:${RESET}"
   echo -e "  ${guidance}"
   echo
+
+  if is_noninteractive; then
+    ui_warning "Non-interactive execution mode: skipping retry prompt."
+    return 1
+  fi
+
   echo -e "  ${DIM}Press Enter to retry  |  Press Q to quit${RESET}"
 
   while true; do
@@ -187,6 +197,12 @@ ui_recovery_menu() {
   done
   echo >&2
 
+  if is_noninteractive; then
+    ui_info "Non-interactive mode: selecting default recovery action (option 1: ${options[0]:-default})." >&2
+    echo "0"
+    return 0
+  fi
+
   while true; do
     printf "  ${BOLD}Select option (1-%d):${RESET} " "${#options[@]}" >&2
     local choice
@@ -235,6 +251,13 @@ ui_confirm() {
   local default="${2:-Y}"
   local answer
 
+  if is_noninteractive; then
+    case "$default" in
+      [Yy]|[Yy][Ee][Ss]) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+
   echo >&2
   if [[ "$default" == "Y" ]]; then
     printf "  ${BOLD}%s [Y/n]:${RESET} " "$prompt" >&2
@@ -265,6 +288,12 @@ ui_choice() {
   done
   echo >&2
 
+  if is_noninteractive; then
+    ui_info "Non-interactive mode: selecting default choice (option 1: ${options[0]:-default})." >&2
+    echo "0"
+    return 0
+  fi
+
   while true; do
     printf "  ${BOLD}Select an option (1-%d):${RESET} " "${#options[@]}" >&2
     read -r choice
@@ -281,6 +310,11 @@ ui_prompt_text() {
   local default="${2:-}"
   local answer
 
+  if is_noninteractive; then
+    echo "$default"
+    return 0
+  fi
+
   echo >&2
   if [[ -n "$default" ]]; then
     printf "  ${BOLD}%s [%s]:${RESET} " "$prompt" "$default" >&2
@@ -296,6 +330,11 @@ ui_prompt_text() {
 ui_prompt_secret() {
   local prompt="$1"
   local answer
+
+  if is_noninteractive; then
+    ui_error "Cannot prompt for secret in non-interactive mode." >&2
+    return 1
+  fi
 
   echo >&2
   printf "  ${BOLD}%s:${RESET} " "$prompt" >&2

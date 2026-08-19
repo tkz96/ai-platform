@@ -23,5 +23,7 @@ while true; do
     break
   fi
 
-  ui_recoverable "Some services failed health checks." "Check logs with: ./bootstrap.sh logs\n  Press Enter to retry health checks."
+  if ! ui_recoverable "Some services failed health checks." "Check logs with: ./bootstrap.sh logs\n  Press Enter to retry health checks."; then
+    exit 1
+  fi
 done

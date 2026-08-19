@@ -7,11 +7,8 @@
 #   2. Configure Mac Mini static IP (10.42.0.1/24)
 #   3. Start dnsmasq DHCP Server & PF NAT Gateway
 #   4. Ensure Cluster Orchestrator SSH Key & Session Token are initialized
-#   5. Start temporary enrollment HTTP server (10.42.0.1:8765)
-#   6. Display enrollment instructions and wait for operator confirmation
-#   7. Shutdown enrollment server (guaranteed via cleanup trap)
-#   8. Execute remote SSH provisioning for all enrolled nodes
-#   9. Multi-node cluster verification
+#   5. Handle Linux Node Enrollment (asynchronously in Web/non-interactive, or interactively in CLI)
+#   6. Execute remote SSH provisioning and verification when nodes are enrolled
 
 set -euo pipefail
 
@@ -36,11 +33,17 @@ ui_header "Control Plane — Inference Cluster Network & Enrollment"
 
 ui_section "Stage 1 — Mac Mini Dedicated Ethernet NIC Selection"
 
+IFACE_SELECTION=""
 while true; do
-  CANDIDATES_RAW=$(list_physical_ethernet_candidates)
-  if [[ -n "$CANDIDATES_RAW" ]]; then
+  if IFACE_SELECTION=$(select_private_ethernet_interface); then
     break
   fi
+
+  if is_noninteractive; then
+    ui_error "Failed to select private Ethernet interface non-interactively."
+    exit 1
+  fi
+
   if ! ui_recoverable \
     "No physical Ethernet/Thunderbolt interfaces detected on this Mac." \
     "Connect a USB-to-Ethernet adapter or Thunderbolt Ethernet adapter, then press Enter to rescan."; then
@@ -48,90 +51,10 @@ while true; do
   fi
 done
 
-WAN_IF=$(get_wan_interface)
-ETH_IF=""
-SELECTED_SVC=""
-SELECTED_DEV=""
+ETH_IF=$(echo "$IFACE_SELECTION" | cut -d'|' -f1)
+SELECTED_SVC=$(echo "$IFACE_SELECTION" | cut -d'|' -f2)
 
-while true; do
-  CANDIDATES_RAW=$(list_physical_ethernet_candidates)
-  IFS=$'\n' read -rd '' -a CANDIDATE_LINES <<< "$CANDIDATES_RAW" || true
-  CANDIDATE_COUNT="${#CANDIDATE_LINES[@]}"
-
-  ui_info "Found $CANDIDATE_COUNT physical Ethernet port(s):"
-
-  declare -a PARSED_DEVS=()
-  declare -a PARSED_SVCS=()
-  idx=1
-
-  for line in "${CANDIDATE_LINES[@]}"; do
-    [[ -z "$line" ]] && continue
-    svc=$(echo "$line" | cut -d'|' -f1)
-    dev=$(echo "$line" | cut -d'|' -f2)
-    mac=$(echo "$line" | cut -d'|' -f3)
-    link_state="inactive"
-    if interface_has_link "$dev"; then
-      link_state="ACTIVE"
-    fi
-    cur_ip=$(interface_get_ip "$dev")
-    [[ -z "$cur_ip" ]] && cur_ip="none"
-    is_default="NO"
-    if [[ "$dev" == "$WAN_IF" ]]; then
-      is_default="YES (Active Internet/WAN)"
-    fi
-
-    PARSED_DEVS+=("$dev")
-    PARSED_SVCS+=("$svc")
-
-    echo -e "  [${idx}] ${BOLD}${svc}${RESET} (${dev})"
-    echo -e "      MAC Address   : ${DIM}${mac}${RESET}"
-    echo -e "      Link State    : $( [[ "$link_state" == "ACTIVE" ]] && echo "${GREEN}ACTIVE${RESET}" || echo "${YELLOW}INACTIVE${RESET}" )"
-    echo -e "      Current IP    : ${cur_ip}"
-    echo -e "      Default Route : ${is_default}"
-    idx=$(( idx + 1 ))
-  done
-
-  if [[ "$CANDIDATE_COUNT" -eq 1 ]]; then
-    SELECTED_DEV="${PARSED_DEVS[0]}"
-    SELECTED_SVC="${PARSED_SVCS[0]}"
-    ui_info "Single Ethernet port detected: $SELECTED_DEV ($SELECTED_SVC)"
-  else
-    SELECTED_NUM=$(ui_prompt_text "Select the Ethernet interface for the private inference link (1-$CANDIDATE_COUNT)" "1")
-    SEL_INDEX=$(( SELECTED_NUM - 1 ))
-    if (( SEL_INDEX < 0 || SEL_INDEX >= CANDIDATE_COUNT )); then
-      ui_warning "Invalid selection: $SELECTED_NUM. Please enter a number between 1 and $CANDIDATE_COUNT."
-      continue
-    fi
-    SELECTED_DEV="${PARSED_DEVS[$SEL_INDEX]}"
-    SELECTED_SVC="${PARSED_SVCS[$SEL_INDEX]}"
-  fi
-
-  # Guard against disruption of primary WAN default route
-  if [[ "$SELECTED_DEV" == "$WAN_IF" ]]; then
-    echo
-    ui_warning "CAUTION: Interface $SELECTED_DEV currently carries your primary Internet/WAN route!"
-    ui_warning "Assigning static IP $MAC_MINI_IP will disrupt this machine's Internet connectivity."
-    if ! ui_confirm "Are you sure you want to repurpose $SELECTED_DEV as the private inference link?" "N"; then
-      ui_info "Please select a different Ethernet/Thunderbolt NIC."
-      continue
-    fi
-  fi
-
-  ETH_IF="$SELECTED_DEV"
-  break
-done
-
-# Verify physical link carrier
-while ! interface_has_link "$ETH_IF"; do
-  echo
-  ui_warning "No physical link detected on $ETH_IF. Is the Ethernet cable connected to the private switch?"
-  if ! ui_recoverable \
-    "Physical link inactive on $ETH_IF." \
-    "Connect the Ethernet cable from this Mac ($ETH_IF) to the private switch or Linux PC, then press Enter to re-check."; then
-    exit 1
-  fi
-done
-ui_success "Physical carrier active on $ETH_IF"
+ui_info "Selected private Ethernet interface: ${BOLD}${ETH_IF}${RESET} (${SELECTED_SVC})"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STAGE 2 — Configure Mac Mini Static IP (10.42.0.1/24)
@@ -146,6 +69,11 @@ while true; do
   if verify_mac_inference_interface "$ETH_IF"; then
     ui_success "Mac Mini inference interface $ETH_IF configured at $MAC_MINI_IP"
     break
+  fi
+
+  if is_noninteractive; then
+    ui_error "Static IP $MAC_MINI_IP is not active on $ETH_IF."
+    exit 1
   fi
 
   if ! ui_recoverable \
@@ -168,6 +96,11 @@ while true; do
     break
   fi
 
+  if is_noninteractive; then
+    ui_error "Failed to start dnsmasq DHCP server on $ETH_IF."
+    exit 1
+  fi
+
   if ! ui_recoverable \
     "Failed to start dnsmasq DHCP server on $ETH_IF." \
     "Check that port 67 is not in use by another DHCP process.\n  Run: sudo lsof -i :67\n  Press Enter to retry."; then
@@ -180,6 +113,11 @@ while true; do
   if enable_mac_nat_gateway; then
     ui_success "PF NAT gateway and packet forwarding active"
     break
+  fi
+
+  if is_noninteractive; then
+    ui_error "Failed to configure dedicated PF NAT gateway."
+    exit 1
   fi
 
   if ! ui_recoverable \
@@ -207,22 +145,55 @@ else
   ui_success "Cluster SSH keypair ready"
 fi
 
-# Invalidate any pre-existing session token and generate a fresh one
+# Ensure session token exists
 TOKEN_FILE="$SECRETS_DIR/enrollment_token"
-rm -f "$TOKEN_FILE"
-SESSION_TOKEN="sk-enroll-$(openssl rand -hex 16 2>/dev/null || od -vN 16 -An -tx1 /dev/urandom | tr -d ' \n')"
-echo "$SESSION_TOKEN" > "$TOKEN_FILE"
-chmod 600 "$TOKEN_FILE"
-ui_success "Fresh bootstrap session token generated"
+if [[ ! -f "$TOKEN_FILE" ]]; then
+  SESSION_TOKEN="sk-enroll-$(openssl rand -hex 16 2>/dev/null || od -vN 16 -An -tx1 /dev/urandom | tr -d ' \n')"
+  echo "$SESSION_TOKEN" > "$TOKEN_FILE"
+  echo "$SESSION_TOKEN" > "$STATE_DIR/enrollment_token" 2>/dev/null || true
+  chmod 600 "$TOKEN_FILE"
+  ui_success "Fresh bootstrap session token generated"
+else
+  SESSION_TOKEN=$(cat "$TOKEN_FILE")
+  echo "$SESSION_TOKEN" > "$STATE_DIR/enrollment_token" 2>/dev/null || true
+  ui_success "Active bootstrap session token loaded"
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# STAGE 5 & 6 — Temporary Enrollment Server & Operator Prompt
+# STAGE 5 — Node Enrollment Instructions & Optional CLI Setup
 # ═════════════════════════════════════════════════════════════════════════════
 
-ui_section "Stage 5 — Linux Node One-Time Enrollment"
+ui_section "Stage 5 — Linux Node Enrollment Configuration"
+
+echo
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "  AI Platform — Linux Inference Node Enrollment"
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "  Gateway Interface: ${BOLD}${CYAN}${ETH_IF}${RESET} (${MAC_MINI_IP})"
+echo -e "  Session Token:     ${BOLD}${CYAN}${SESSION_TOKEN}${RESET}"
+echo -e ""
+echo -e "  Run this on fresh Linux inference PCs to connect them:"
+echo -e "    ${BOLD}wget -q http://${MAC_MINI_IP}:8765/node-enroll.sh -O node-enroll.sh${RESET}"
+echo -e "    ${BOLD}chmod +x node-enroll.sh && sudo ./node-enroll.sh --token ${SESSION_TOKEN}${RESET}"
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo
+
+if is_noninteractive; then
+  ui_success "Private network stack and gateway operational."
+  ui_info "Node enrollment available on-demand via Web Dashboard or './bootstrap.sh connect-inference'."
+  exit 0
+fi
+
+# Interactive CLI mode: Ask if operator wants to enroll nodes now
+if ! ui_confirm "Do you want to start the enrollment server and connect Linux nodes now?" "N"; then
+  ui_info "Skipping immediate node enrollment."
+  ui_info "You can enroll inference nodes anytime by running: ./bootstrap.sh connect-inference"
+  exit 0
+fi
+
+# ── Interactive Enrollment Listener ──────────────────────────────────────────
 
 ENROLL_SERVER_PID=""
-ENROLLMENT_SKIPPED=false
 stop_enrollment_server_process() {
   if [[ -n "$ENROLL_SERVER_PID" ]] && ps -p "$ENROLL_SERVER_PID" >/dev/null 2>&1; then
     kill "$ENROLL_SERVER_PID" 2>/dev/null || true
@@ -233,16 +204,11 @@ stop_enrollment_server_process() {
 
 cleanup_enroll_server() {
   stop_enrollment_server_process
-  rm -f "$TOKEN_FILE"
 }
 trap cleanup_enroll_server EXIT INT TERM
 
 start_enrollment_server_process() {
   stop_enrollment_server_process
-  mkdir -p "$SECRETS_DIR" "$STATE_DIR" 2>/dev/null || true
-  echo "$SESSION_TOKEN" > "$TOKEN_FILE"
-  echo "$SESSION_TOKEN" > "$STATE_DIR/enrollment_token"
-  chmod 600 "$TOKEN_FILE" "$STATE_DIR/enrollment_token" 2>/dev/null || true
   (
     cd "$PROJECT_ROOT"
     export SESSION_TOKEN="$SESSION_TOKEN"
@@ -250,7 +216,7 @@ start_enrollment_server_process() {
 import sys
 from pathlib import Path
 sys.path.insert(0, '$PROJECT_ROOT')
-from platform.enrollment import make_enrollment_server
+from ai_platform.enrollment import make_enrollment_server
 server = make_enrollment_server(Path('$PROJECT_ROOT'), host='$MAC_MINI_IP', port=8765)
 server.serve_forever()
 "
@@ -262,158 +228,79 @@ server.serve_forever()
 ui_step "Starting temporary enrollment HTTP server on $MAC_MINI_IP:8765..."
 start_enrollment_server_process
 
-ui_step "Verifying enrollment server and DHCP readiness..."
-while ! smoke_test_mac_network_services; do
-  diag_server="${RED}crashed / not running${RESET}"
-  diag_dhcp="${RED}not running${RESET}"
-
-  if [[ -n "$ENROLL_SERVER_PID" ]] && ps -p "$ENROLL_SERVER_PID" >/dev/null 2>&1; then
-    diag_server="${GREEN}process running (endpoint failing)${RESET}"
+ui_live_status_clear
+while true; do
+  ENROLLED_COUNT=0
+  LEASE_COUNT=0
+  if [[ -f "$STATE_DIR/nodes.yaml" ]] && command -v yq >/dev/null 2>&1; then
+    ENROLLED_COUNT=$(yq '.nodes | length' "$STATE_DIR/nodes.yaml" 2>/dev/null || echo "0")
+  fi
+  if [[ -f "$STATE_DIR/dnsmasq.leases" ]]; then
+    LEASE_COUNT=$(grep -c "^" "$STATE_DIR/dnsmasq.leases" 2>/dev/null || echo "0")
   fi
 
-  pid_file="/tmp/ai-platform-dnsmasq.pid"
-  if [[ -f "$pid_file" ]]; then
-    dpid=$(cat "$pid_file" 2>/dev/null || echo "")
-    if [[ -n "$dpid" ]] && sudo kill -0 "$dpid" 2>/dev/null; then
-      diag_dhcp="${GREEN}running (PID $dpid)${RESET}"
-    fi
+  link_str="${RED}disconnected${RESET}"
+  if interface_has_link "$ETH_IF"; then
+    link_str="${GREEN}connected${RESET}"
   fi
 
-  echo
-  echo -e "  ${RED}${BOLD}━━━ Enrollment Server Not Ready ━━━${RESET}"
-  echo -e "  ${SYM_DOT} Enrollment HTTP server: $diag_server"
-  echo -e "  ${SYM_DOT} dnsmasq DHCP server:    $diag_dhcp"
-  echo
-  echo -e "  ${BOLD}Options:${RESET}"
-  echo -e "  [R] ${GREEN}Retry${RESET}  — Restart enrollment server and try again"
-  echo -e "  [S] ${YELLOW}Skip${RESET}   — Deploy Mac services now, enroll nodes later"
-  echo -e "                 (run: ./bootstrap.sh connect-inference)"
-  echo -e "  [Q] ${RED}Quit${RESET}   — Exit the installer"
-  echo
+  ui_live_status \
+    "  ${SYM_DOT} Physical link on $ETH_IF:  $link_str" \
+    "  ${SYM_DOT} DHCP leases assigned:     ${BOLD}${LEASE_COUNT}${RESET} active" \
+    "  ${SYM_DOT} Enrolled node(s):         ${BOLD}${GREEN}${ENROLLED_COUNT}${RESET}" \
+    "" \
+    "  ${DIM}Press Enter to proceed with enrolled nodes | S to skip | Q to quit${RESET}"
 
   key=""
-  read -rsn1 key
-  case "$key" in
-    r|R|"")
-      ui_step "Restarting enrollment server..."
-      start_enrollment_server_process
-      ;;
-    s|S)
-      ui_warning "Skipping node enrollment. Mac services will deploy now."
-      ENROLLMENT_SKIPPED=true
-      break
-      ;;
-    q|Q)
-      cleanup_enroll_server
-      ui_info "Exiting at user request."
-      exit 1
-      ;;
-  esac
+  if read -rsn1 -t 5 key; then
+    case "$key" in
+      "")  # Enter key
+        ui_live_status_clear
+        if (( ENROLLED_COUNT > 0 )); then
+          echo
+          ui_success "Proceeding with $ENROLLED_COUNT enrolled node(s)."
+          (cd "$PROJECT_ROOT" && uv run python bootstrap.py nodes list 2>/dev/null || true)
+          break
+        else
+          echo
+          ui_warning "No nodes enrolled yet."
+          if ui_confirm "Do you want to proceed without enrolling any nodes now?" "N"; then
+            break
+          fi
+          ui_live_status_clear
+        fi
+        ;;
+      s|S)
+        ui_live_status_clear
+        echo
+        ui_warning "Skipping node enrollment. You can enroll later via: ./bootstrap.sh connect-inference"
+        break
+        ;;
+      q|Q)
+        ui_live_status_clear
+        cleanup_enroll_server
+        ui_info "Exiting at user request."
+        exit 0
+        ;;
+    esac
+  fi
 done
 
-if [[ "$ENROLLMENT_SKIPPED" != "true" ]]; then
-  ui_success "Enrollment listener running and verified on http://$MAC_MINI_IP:8765"
-
-  echo
-  echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo -e "  AI Platform — Linux Inference Node Enrollment"
-  echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo -e "  Session Token: ${BOLD}${CYAN}${SESSION_TOKEN}${RESET}"
-  echo -e ""
-  echo -e "  Run this on every fresh Linux inference PC:"
-  echo -e ""
-  echo -e "  ${BOLD}Option A — wget (available on fresh Ubuntu):${RESET}"
-  echo -e "    wget -q http://${MAC_MINI_IP}:8765/node-enroll.sh -O node-enroll.sh"
-  echo -e ""
-  echo -e "  ${BOLD}Option B — curl (if installed):${RESET}"
-  echo -e "    curl -fsS http://${MAC_MINI_IP}:8765/node-enroll.sh -o node-enroll.sh"
-  echo -e ""
-  echo -e "  ${BOLD}Then execute:${RESET}"
-  echo -e "    chmod +x node-enroll.sh"
-  echo -e "    sudo ./node-enroll.sh --token ${SESSION_TOKEN}"
-  echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo -e ""
-
-  ui_live_status_clear
-  while true; do
-    ENROLLED_COUNT=0
-    LEASE_COUNT=0
-    if [[ -f "$STATE_DIR/nodes.yaml" ]] && command -v yq >/dev/null 2>&1; then
-      ENROLLED_COUNT=$(yq '.nodes | length' "$STATE_DIR/nodes.yaml" 2>/dev/null || echo "0")
-    fi
-    if [[ -f "$STATE_DIR/dnsmasq.leases" ]]; then
-      LEASE_COUNT=$(grep -c "^" "$STATE_DIR/dnsmasq.leases" 2>/dev/null || echo "0")
-    fi
-
-    link_str="${RED}disconnected${RESET}"
-    if interface_has_link "$ETH_IF"; then
-      link_str="${GREEN}connected${RESET}"
-    fi
-
-    ui_live_status \
-      "  ${SYM_DOT} Physical link on $ETH_IF:  $link_str" \
-      "  ${SYM_DOT} DHCP leases assigned:     ${BOLD}${LEASE_COUNT}${RESET} active" \
-      "  ${SYM_DOT} Enrolled node(s):         ${BOLD}${GREEN}${ENROLLED_COUNT}${RESET}" \
-      "" \
-      "  ${DIM}Press Enter to proceed with enrolled nodes | S to skip | Q to quit${RESET}"
-
-    key=""
-    if read -rsn1 -t 5 key; then
-      case "$key" in
-        "")  # Enter key
-          ui_live_status_clear
-          if (( ENROLLED_COUNT > 0 )); then
-            echo
-            ui_success "Proceeding with $ENROLLED_COUNT enrolled node(s)."
-            (cd "$PROJECT_ROOT" && uv run python bootstrap.py nodes list 2>/dev/null || true)
-            break
-          else
-            echo
-            ui_warning "No nodes enrolled yet."
-            if ui_confirm "Do you want to proceed without enrolling any nodes now?" "N"; then
-              ENROLLMENT_SKIPPED=true
-              break
-            fi
-            ui_live_status_clear
-          fi
-          ;;
-        s|S)
-          ui_live_status_clear
-          echo
-          ui_warning "Skipping node enrollment. You can enroll later via: ./bootstrap.sh connect-inference"
-          ENROLLMENT_SKIPPED=true
-          break
-          ;;
-        q|Q)
-          ui_live_status_clear
-          cleanup_enroll_server
-          ui_info "Exiting at user request."
-          exit 0
-          ;;
-      esac
-    fi
-  done
-fi
-
-# Stop enrollment server and clean up token
 cleanup_enroll_server
 trap - EXIT INT TERM
-ui_success "Enrollment server stopped and session token invalidated"
+ui_success "Enrollment server stopped"
 
-# ═════════════════════════════════════════════════════════════════════════════
-# STAGE 6 & 7 — Centralized Remote Node Provisioning & Verification
-# ═════════════════════════════════════════════════════════════════════════════
+# Provision enrolled nodes if any
+ENROLLED_COUNT=0
+if [[ -f "$STATE_DIR/nodes.yaml" ]] && command -v yq >/dev/null 2>&1; then
+  ENROLLED_COUNT=$(yq '.nodes | length' "$STATE_DIR/nodes.yaml" 2>/dev/null || echo "0")
+fi
 
-if [[ "$ENROLLMENT_SKIPPED" != "true" ]]; then
+if (( ENROLLED_COUNT > 0 )); then
   ui_section "Stage 6 — Remote SSH Node Provisioning"
-  ui_step "Executing remote provisioning across all enrolled nodes..."
   (cd "$PROJECT_ROOT" && uv run python bootstrap.py nodes provision) || true
-  ui_success "Node provisioning cycle completed"
-
   ui_section "Stage 7 — Multi-Node Cluster Verification"
   (cd "$PROJECT_ROOT" && uv run python bootstrap.py nodes verify) || true
-else
-  ui_info "Node provisioning skipped. Run './bootstrap.sh connect-inference' when nodes are ready."
 fi
 
 echo

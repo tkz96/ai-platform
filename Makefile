@@ -40,7 +40,7 @@ destroy:
 	uv run python bootstrap.py destroy
 
 ui:
-	uv run uvicorn platform.web.app:app --host 127.0.0.1 --port 8888
+	uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888
 
 lint:
 	uv run ruff check .

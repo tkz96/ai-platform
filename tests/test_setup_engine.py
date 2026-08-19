@@ -131,3 +131,32 @@ def test_setup_auto_fix_endpoint():
     response = client.post("/api/setup/auto-fix-phase", data={"phase_id": "08-render"})
     assert response.status_code == 200
     assert response.json()["phase_id"] == "08-render"
+
+
+def test_setup_engine_lock_contention():
+    from ai_platform.setup.engine import _SETUP_LOCK
+
+    engine = SetupEngine(PROJECT_ROOT)
+
+    # Simulate lock being held by another thread/request
+    assert _SETUP_LOCK.acquire(blocking=False)
+    try:
+        gen = engine.stream_phase_execution("08-render")
+        first_event = next(gen)
+        assert "event: error" in first_event
+        assert "Another setup execution is currently in progress" in first_event
+
+        all_gen = engine.stream_all_phases_execution()
+        all_event = next(all_gen)
+        assert "event: error" in all_event
+        assert "Another setup execution is currently in progress" in all_event
+    finally:
+        _SETUP_LOCK.release()
+
+
+def test_setup_stream_invalid_phase():
+    engine = SetupEngine(PROJECT_ROOT)
+    gen = engine.stream_phase_execution("99-nonexistent")
+    first_event = next(gen)
+    assert "event: error" in first_event
+    assert "Invalid phase id" in first_event

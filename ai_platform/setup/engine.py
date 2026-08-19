@@ -95,6 +95,79 @@ class SetupEngine:
             "phases": [asdict(s) for s in statuses],
         }
 
+    def _stream_phase_internal(self, phase_id: str) -> Generator[str, None, None]:
+        """Internal generator for executing a single phase and streaming SSE events."""
+        phases_map = {p.id: p for p in self.get_phase_definitions()}
+        phase = phases_map.get(phase_id)
+
+        if not phase:
+            yield f"event: error\ndata: {json.dumps({'error': f'Invalid phase id: {phase_id}'})}\n\n"
+            return
+
+        script_path = self.scripts_dir / phase.script
+        if not script_path.exists():
+            yield f"event: error\ndata: {json.dumps({'error': f'Script not found: {phase.script}'})}\n\n"
+            return
+
+        yield f"event: step_start\ndata: {json.dumps({'phase_id': phase.id, 'name': phase.name})}\n\n"
+        yield f"event: log\ndata: {json.dumps({'line': f'===> Starting Phase {phase.id}: {phase.name}'})}\n\n"
+        yield f"event: log\ndata: {json.dumps({'line': f'Executing: bash {script_path.name}'})}\n\n"
+
+        env = os.environ.copy()
+        env["PROJECT_ROOT"] = str(self.project_root)
+        env["NONINTERACTIVE"] = "1"
+        env["PYTHONUNBUFFERED"] = "1"
+        if "PATH" in env:
+            env["PATH"] = (
+                f"/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:{env['PATH']}"
+            )
+
+        start_time = time.perf_counter()
+        process = None
+        try:
+            process = subprocess.Popen(
+                ["bash", str(script_path)],
+                cwd=str(self.project_root),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=env,
+            )
+
+            if process.stdout:
+                for line in iter(process.stdout.readline, ""):
+                    cleaned = clean_ansi(line.rstrip())
+                    if cleaned:
+                        yield f"event: log\ndata: {json.dumps({'line': cleaned})}\n\n"
+
+            process.wait()
+            duration = round(time.perf_counter() - start_time, 2)
+
+            if process.returncode == 0:
+                yield f"event: log\ndata: {json.dumps({'line': f'✓ Phase {phase.id} completed successfully in {duration}s'})}\n\n"
+                yield f"event: step_done\ndata: {json.dumps({'phase_id': phase.id, 'success': True, 'duration_s': duration})}\n\n"
+            else:
+                yield f"event: log\ndata: {json.dumps({'line': f'✗ Phase {phase.id} failed with exit code {process.returncode} ({duration}s)'})}\n\n"
+                remediation = {
+                    "common_issues": [asdict(issue) for issue in phase.common_issues],
+                    "manual_command": f"bash scripts/install/{phase.script}",
+                }
+                yield f"event: error\ndata: {json.dumps({'phase_id': phase.id, 'exit_code': process.returncode, 'remediation': remediation})}\n\n"
+
+        except (GeneratorExit, BaseException) as e:
+            if process and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            if not isinstance(e, GeneratorExit):
+                yield f"event: log\ndata: {json.dumps({'line': f'Execution exception: {e}'})}\n\n"
+                yield f"event: error\ndata: {json.dumps({'phase_id': phase.id, 'error': str(e)})}\n\n"
+            raise
+
     def stream_phase_execution(self, phase_id: str) -> Generator[str, None, None]:
         """Execute a specific provisioning phase and stream real-time SSE output events."""
         if not _SETUP_LOCK.acquire(blocking=False):
@@ -102,94 +175,43 @@ class SetupEngine:
             return
 
         try:
-            phases_map = {p.id: p for p in self.get_phase_definitions()}
-            phase = phases_map.get(phase_id)
-
-            if not phase:
-                yield f"event: error\ndata: {json.dumps({'error': f'Invalid phase id: {phase_id}'})}\n\n"
-                return
-
-            script_path = self.scripts_dir / phase.script
-            if not script_path.exists():
-                yield f"event: error\ndata: {json.dumps({'error': f'Script not found: {phase.script}'})}\n\n"
-                return
-
-            yield f"event: step_start\ndata: {json.dumps({'phase_id': phase.id, 'name': phase.name})}\n\n"
-            yield f"event: log\ndata: {json.dumps({'line': f'===> Starting Phase {phase.id}: {phase.name}'})}\n\n"
-            yield f"event: log\ndata: {json.dumps({'line': f'Executing: bash {script_path.name}'})}\n\n"
-
-            env = os.environ.copy()
-            env["PROJECT_ROOT"] = str(self.project_root)
-            env["NONINTERACTIVE"] = "1"
-            if "PATH" in env:
-                env["PATH"] = (
-                    f"/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:{env['PATH']}"
-                )
-
-            start_time = time.perf_counter()
-            try:
-                process = subprocess.Popen(
-                    ["bash", str(script_path)],
-                    cwd=str(self.project_root),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    env=env,
-                )
-
-                if process.stdout:
-                    for line in iter(process.stdout.readline, ""):
-                        cleaned = clean_ansi(line.rstrip())
-                        if cleaned:
-                            yield f"event: log\ndata: {json.dumps({'line': cleaned})}\n\n"
-
-                process.wait()
-                duration = round(time.perf_counter() - start_time, 2)
-
-                if process.returncode == 0:
-                    yield f"event: log\ndata: {json.dumps({'line': f'✓ Phase {phase.id} completed successfully in {duration}s'})}\n\n"
-                    yield f"event: step_done\ndata: {json.dumps({'phase_id': phase.id, 'success': True, 'duration_s': duration})}\n\n"
-                else:
-                    yield f"event: log\ndata: {json.dumps({'line': f'✗ Phase {phase.id} failed with exit code {process.returncode} ({duration}s)'})}\n\n"
-                    remediation = {
-                        "common_issues": [asdict(issue) for issue in phase.common_issues],
-                        "manual_command": f"bash scripts/install/{phase.script}",
-                    }
-                    yield f"event: error\ndata: {json.dumps({'phase_id': phase.id, 'exit_code': process.returncode, 'remediation': remediation})}\n\n"
-
-            except Exception as e:
-                yield f"event: log\ndata: {json.dumps({'line': f'Execution exception: {e}'})}\n\n"
-                yield f"event: error\ndata: {json.dumps({'phase_id': phase.id, 'error': str(e)})}\n\n"
+            yield from self._stream_phase_internal(phase_id)
         finally:
             _SETUP_LOCK.release()
 
     def stream_all_phases_execution(self) -> Generator[str, None, None]:
         """Execute all uncompleted phases sequentially, streaming SSE events throughout."""
-        phases = self.get_phase_definitions()
-        yield f"event: log\ndata: {json.dumps({'line': '=== AI Platform Provisioning Sequence Initiated ==='})}\n\n"
+        if not _SETUP_LOCK.acquire(blocking=False):
+            yield f"event: error\ndata: {json.dumps({'error': 'Another setup execution is currently in progress.'})}\n\n"
+            return
 
-        all_success = True
-        for p in phases:
-            status, _, _ = self.check_empirical_phase_status(p.id)
-            if status == "completed":
-                yield f"event: log\ndata: {json.dumps({'line': f'⤳ Skipping Phase {p.id} ({p.name}) — Already satisfied.'})}\n\n"
-                yield f"event: step_done\ndata: {json.dumps({'phase_id': p.id, 'success': True, 'skipped': True})}\n\n"
-                continue
+        try:
+            phases = self.get_phase_definitions()
+            yield f"event: log\ndata: {json.dumps({'line': '=== AI Platform Provisioning Sequence Initiated ==='})}\n\n"
 
-            for sse in self.stream_phase_execution(p.id):
-                yield sse
-                if "event: error" in sse:
-                    all_success = False
-                    break
+            all_success = True
+            for p in phases:
+                status, _, _ = self.check_empirical_phase_status(p.id)
+                if status == "completed":
+                    yield f"event: log\ndata: {json.dumps({'line': f'⤳ Skipping Phase {p.id} ({p.name}) — Already satisfied.'})}\n\n"
+                    yield f"event: step_done\ndata: {json.dumps({'phase_id': p.id, 'success': True, 'skipped': True})}\n\n"
+                    continue
 
-            if not all_success:
-                yield f"event: log\ndata: {json.dumps({'line': '=== Provisioning sequence halted due to phase failure. Review troubleshooting guidance above. ==='})}\n\n"
-                yield f"event: complete\ndata: {json.dumps({'success': False})}\n\n"
-                return
+                for sse in self._stream_phase_internal(p.id):
+                    yield sse
+                    if "event: error" in sse:
+                        all_success = False
+                        break
 
-        yield f"event: log\ndata: {json.dumps({'line': '🎉 All phases completed successfully! Platform is fully provisioned.'})}\n\n"
-        yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                if not all_success:
+                    yield f"event: log\ndata: {json.dumps({'line': '=== Provisioning sequence halted due to phase failure. Review troubleshooting guidance above. ==='})}\n\n"
+                    yield f"event: complete\ndata: {json.dumps({'success': False})}\n\n"
+                    return
+
+            yield f"event: log\ndata: {json.dumps({'line': '🎉 All phases completed successfully! Platform is fully provisioned.'})}\n\n"
+            yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+        finally:
+            _SETUP_LOCK.release()
 
     def auto_fix_phase(self, phase_id: str) -> dict[str, Any]:
         """Execute automated targeted diagnostic repair for a specific phase."""

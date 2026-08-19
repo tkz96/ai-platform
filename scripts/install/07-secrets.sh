@@ -74,7 +74,7 @@ get_or_generate() {
     return 0
   fi
 
-  if ui_confirm "Generate $prompt automatically?"; then
+  if is_noninteractive || ui_confirm "Generate $prompt automatically?"; then
     local value
     if [[ "$name" == *"encryption key"* ]]; then
       value=$(generate_hex_secret 64)

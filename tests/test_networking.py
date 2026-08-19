@@ -41,3 +41,24 @@ def test_setup_dnsmasq_config_valid():
         conf_file = Path(tmpdir) / "state" / "dnsmasq.conf"
         assert conf_file.exists()
         assert "interface=en0" in conf_file.read_text()
+
+
+def test_select_private_ethernet_interface_noninteractive():
+    # Mock network tools to verify selection logic
+    mock_script = """
+    export NONINTERACTIVE=1
+    list_physical_ethernet_candidates() {
+        echo "Thunderbolt Ethernet Slot 1|en5|00:11:22:33:44:55"
+        echo "Ethernet|en0|aa:bb:cc:dd:ee:ff"
+    }
+    get_wan_interface() {
+        echo "en0"
+    }
+    interface_has_link() {
+        [[ "$1" == "en5" ]]
+    }
+    select_private_ethernet_interface
+    """
+    res = run_bash_func(mock_script)
+    assert res.returncode == 0
+    assert res.stdout.strip() == "en5|Thunderbolt Ethernet Slot 1"

@@ -577,8 +577,26 @@ run_connect_inference() {
 
 run_ui() {
   ui_header "AI Platform Control Plane Web UI"
-  ui_info "Starting Web UI server on http://127.0.0.1:8888..."
-  (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888)
+  local target_port="${1:-8888}"
+
+  if port_is_dashboard "$target_port"; then
+    ui_success "AI Platform Web Dashboard is already active at http://127.0.0.1:${target_port}"
+    open "http://127.0.0.1:${target_port}" 2>/dev/null || true
+    return 0
+  fi
+
+  if ! port_available "$target_port"; then
+    local alt_port
+    alt_port=$(port_find_available "$target_port")
+    if [[ -n "$alt_port" ]]; then
+      ui_warning "Port $target_port is in use. Switching Web UI to http://127.0.0.1:${alt_port}"
+      target_port="$alt_port"
+    fi
+  fi
+
+  ui_info "Starting Web UI server on http://127.0.0.1:${target_port}..."
+  (sleep 1.2 && open "http://127.0.0.1:${target_port}" 2>/dev/null || true) &
+  (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port "$target_port")
 }
 
 # ── Destroy ────────────────────────────────────────────────────────────────
@@ -704,13 +722,33 @@ run_bootstrap_default() {
     fi
   done
 
-  # 4. Interactive Port Collision Handler
+  # 4. Interactive Port Collision Handler & Dashboard Detection
   local target_port=8888
-  while nc -z 127.0.0.1 "$target_port" 2>/dev/null; do
+  if port_is_dashboard "$target_port"; then
+    echo
+    ui_success "AI Platform Web Dashboard is already running at http://127.0.0.1:${target_port}"
+    (sleep 0.5 && open "http://127.0.0.1:${target_port}" 2>/dev/null || true) &
+    return 0
+  fi
+
+  while ! port_available "$target_port"; do
     ui_warning "Port $target_port is currently in use."
     local occupant_pid
     occupant_pid=$(lsof -ti :"$target_port" 2>/dev/null | head -1 || echo "")
-    
+
+    if is_noninteractive; then
+      local next_port
+      next_port=$(port_find_available $((target_port + 1)))
+      if [[ -n "$next_port" ]]; then
+        ui_info "Non-interactive mode: switching to available port $next_port"
+        target_port="$next_port"
+        break
+      else
+        ui_error "Could not find available port for Web Dashboard"
+        return 1
+      fi
+    fi
+
     local port_choice
     if [[ -n "$occupant_pid" ]]; then
       local occupant_cmd
@@ -729,8 +767,12 @@ run_bootstrap_default() {
           ;;
         1)
           ui_info "Terminating process $occupant_pid..."
-          kill -9 "$occupant_pid" 2>/dev/null || true
+          kill -15 "$occupant_pid" 2>/dev/null || true
           sleep 1
+          if ! port_available "$target_port"; then
+            kill -9 "$occupant_pid" 2>/dev/null || true
+            sleep 1
+          fi
           ;;
         2)
           ui_info "Retrying port $target_port..."
@@ -762,6 +804,11 @@ run_bootstrap_default() {
       ui_info "Web UI server shut down normally."
       break
     else
+      if is_noninteractive; then
+        ui_error "Uvicorn server on port $target_port failed to start."
+        return 1
+      fi
+
       local ui_choice
       ui_choice=$(ui_recovery_menu "Web UI Server Error" "Uvicorn server exited unexpectedly" \
         "Restart Web UI server on http://127.0.0.1:${target_port}" \

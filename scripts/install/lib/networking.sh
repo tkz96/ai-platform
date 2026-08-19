@@ -16,6 +16,9 @@ NETMASK="255.255.255.0"
 DEFAULT_PROBE_IMAGE="docker.io/curlimages/curl@sha256:c3b8bee303c6c6beed656cfc921218c529d65aa61114eb9e27c62047a1271b9b"
 
 SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! command -v ui_error >/dev/null 2>&1; then
+  [[ -f "$SCRIPT_LIB_DIR/ui.sh" ]] && source "$SCRIPT_LIB_DIR/ui.sh"
+fi
 if [[ -f "$SCRIPT_LIB_DIR/diagnostics.sh" ]]; then
   source "$SCRIPT_LIB_DIR/diagnostics.sh"
 fi
@@ -79,6 +82,101 @@ get_service_name_for_device() {
     /Hardware Port:/ { port=substr($0, 16) }
     /Device:/ { if ($2 == dev) print port }
   ' | head -n 1
+}
+
+# Safely selects the private Ethernet interface, preventing WAN hijacking in non-interactive mode
+select_private_ethernet_interface() {
+  local wan_if
+  wan_if=$(get_wan_interface)
+  local candidates_raw
+  candidates_raw=$(list_physical_ethernet_candidates)
+
+  if [[ -z "$candidates_raw" ]]; then
+    ui_error "No physical Ethernet/Thunderbolt interfaces detected on this Mac."
+    return 1
+  fi
+
+  local lines=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && lines+=("$line")
+  done <<< "$candidates_raw"
+
+  local count="${#lines[@]}"
+  local devs=()
+  local svcs=()
+  local non_wan_devs=()
+  local non_wan_svcs=()
+
+  for line in "${lines[@]}"; do
+    local svc dev mac
+    svc=$(echo "$line" | cut -d'|' -f1)
+    dev=$(echo "$line" | cut -d'|' -f2)
+    mac=$(echo "$line" | cut -d'|' -f3)
+
+    devs+=("$dev")
+    svcs+=("$svc")
+
+    if [[ "$dev" != "$wan_if" ]]; then
+      non_wan_devs+=("$dev")
+      non_wan_svcs+=("$svc")
+    fi
+  done
+
+  # Non-interactive mode
+  if is_noninteractive; then
+    # Prefer non-WAN device with active carrier link
+    for i in "${!non_wan_devs[@]}"; do
+      if interface_has_link "${non_wan_devs[$i]}"; then
+        echo "${non_wan_devs[$i]}|${non_wan_svcs[$i]}"
+        return 0
+      fi
+    done
+    # Fallback to first non-WAN candidate
+    if (( ${#non_wan_devs[@]} > 0 )); then
+      echo "${non_wan_devs[0]}|${non_wan_svcs[0]}"
+      return 0
+    fi
+    ui_error "Only WAN interface ($wan_if) detected. Cannot safely assign private IP in non-interactive mode."
+    return 1
+  fi
+
+  # Interactive mode: Single candidate
+  if (( count == 1 )); then
+    echo "${devs[0]}|${svcs[0]}"
+    return 0
+  fi
+
+  # Interactive mode: Multiple candidates prompt
+  local idx=1
+  for line in "${lines[@]}"; do
+    local svc dev mac is_default="NO"
+    svc=$(echo "$line" | cut -d'|' -f1)
+    dev=$(echo "$line" | cut -d'|' -f2)
+    mac=$(echo "$line" | cut -d'|' -f3)
+    [[ "$dev" == "$wan_if" ]] && is_default="YES (Active Internet/WAN)"
+    echo -e "  [${idx}] ${svc} (${dev}) - MAC: ${mac} - Default Route: ${is_default}" >&2
+    idx=$((idx + 1))
+  done
+
+  local sel_num
+  sel_num=$(ui_prompt_text "Select Ethernet interface for private inference link (1-$count)" "1")
+  local sel_idx=$(( sel_num - 1 ))
+  if (( sel_idx < 0 || sel_idx >= count )); then
+    sel_idx=0
+  fi
+
+  local chosen_dev="${devs[$sel_idx]}"
+  local chosen_svc="${svcs[$sel_idx]}"
+
+  if [[ "$chosen_dev" == "$wan_if" ]]; then
+    ui_warning "CAUTION: Interface $chosen_dev carries your primary Internet route!"
+    if ! ui_confirm "Are you sure you want to repurpose $chosen_dev?" "N"; then
+      return 1
+    fi
+  fi
+
+  echo "${chosen_dev}|${chosen_svc}"
+  return 0
 }
 
 # ── Mac Mini Interface Configuration ─────────────────────────────────────────

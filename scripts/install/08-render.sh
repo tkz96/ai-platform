@@ -23,5 +23,7 @@ while true; do
     break
   fi
 
-  ui_recoverable "Configuration rendering failed." "Check platform.yaml syntax and template files, then press Enter to retry."
+  if ! ui_recoverable "Configuration rendering failed." "Check platform.yaml syntax and template files, then press Enter to retry."; then
+    exit 1
+  fi
 done

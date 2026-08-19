@@ -7,7 +7,6 @@ import os
 import shutil
 import socket
 import subprocess
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -38,10 +37,33 @@ def check_podman_readiness(project_root: Path) -> tuple[str, dict[str, Any], str
             if ai_machine:
                 is_running = ai_machine.get("Running", False) or ai_machine.get("running", False)
                 if is_running:
+                    # Also test podman info liveness
+                    info_res = subprocess.run(
+                        ["podman", "info"],
+                        capture_output=True,
+                        text=True,
+                        timeout=4,
+                    )
+                    if info_res.returncode == 0:
+                        return (
+                            "completed",
+                            {
+                                "machine_exists": True,
+                                "running": True,
+                                "details": ai_machine,
+                                "info_ok": True,
+                            },
+                            None,
+                        )
                     return (
-                        "completed",
-                        {"machine_exists": True, "running": True, "details": ai_machine},
-                        None,
+                        "pending",
+                        {
+                            "machine_exists": True,
+                            "running": True,
+                            "details": ai_machine,
+                            "info_ok": False,
+                        },
+                        "Podman machine is running but service API is not responding",
                     )
                 return (
                     "pending",
@@ -60,19 +82,18 @@ def check_podman_readiness(project_root: Path) -> tuple[str, dict[str, Any], str
 
 
 def check_network_readiness(project_root: Path) -> tuple[str, dict[str, Any], str | None]:
-    """Phase 5 Empirical Network Readiness check.
+    """Phase 6a Empirical Network Readiness check.
 
-    Must empirically verify interface, dnsmasq DHCP, PF NAT, and enrollment server status.
-    No single string match is capable of reporting 'completed' when any component is broken.
+    Empirically verifies dedicated interface IP (10.42.0.1), dnsmasq DHCP, and PF NAT gateway.
     """
     details: dict[str, Any] = {
         "interface_ok": False,
         "ip_10_42_0_1": False,
+        "ip_10_42_0_1_configured": False,
         "not_wan_interface": True,
         "dhcp_ok": False,
         "dnsmasq_syntax_valid": False,
         "nat_ok": False,
-        "enrollment_server_ok": False,
     }
     failures: list[str] = []
 
@@ -83,6 +104,7 @@ def check_network_readiness(project_root: Path) -> tuple[str, dict[str, Any], st
         ).stdout
         if "10.42.0.1" in ifconfig_out:
             details["ip_10_42_0_1"] = True
+            details["ip_10_42_0_1_configured"] = True
             details["interface_ok"] = True
         else:
             failures.append("10.42.0.1/24 IP not assigned to any network interface")
@@ -154,33 +176,11 @@ def check_network_readiness(project_root: Path) -> tuple[str, dict[str, Any], st
     if not ip_forwarding:
         failures.append("IP forwarding (net.inet.ip.forwarding) is disabled")
 
-    # 4. Enrollment Server Probe (http://10.42.0.1:8765/api/enroll/status or 127.0.0.1:8765)
-    enroll_ok = False
-    for target in [
-        "http://10.42.0.1:8765/api/enroll/status",
-        "http://127.0.0.1:8765/api/enroll/status",
-    ]:
-        try:
-            req = urllib.request.Request(target, method="GET")
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
-                if resp.status == 200:
-                    enroll_ok = True
-                    break
-        except Exception:
-            pass
-
-    details["enrollment_server_ok"] = enroll_ok
-    if not enroll_ok:
-        failures.append(
-            "Enrollment server listening at 8765 is not responding to /api/enroll/status"
-        )
-
     if (
         details["ip_10_42_0_1"]
         and details["not_wan_interface"]
         and details["dhcp_ok"]
         and details["nat_ok"]
-        and details["enrollment_server_ok"]
     ):
         return "completed", details, None
 
@@ -191,9 +191,10 @@ def check_network_readiness(project_root: Path) -> tuple[str, dict[str, Any], st
 def check_secrets_readiness(project_root: Path) -> tuple[str, dict[str, Any], str | None]:
     """Empirically inspect secrets & cluster SSH key readiness."""
     env_file = project_root / ".env"
-    cluster_key = project_root / "secrets" / "cluster_key"
+    cluster_key = project_root / "secrets" / "ssh" / "cluster_orchestrator_key"
+    legacy_key = project_root / "secrets" / "cluster_key"
     env_exists = env_file.exists() and env_file.stat().st_size > 100
-    key_exists = cluster_key.exists()
+    key_exists = cluster_key.exists() or legacy_key.exists()
 
     details = {
         "env_file_exists": env_exists,

@@ -20,14 +20,34 @@ podman_version() {
 
 podman_machine_exists() {
   local machine_name="$1"
-  # podman machine inspect exits 0 if the machine exists, non-zero otherwise.
-  # More reliable than grepping `podman machine list` in Podman 6.x.
-  podman machine inspect "$machine_name" > /dev/null 2>&1
+  # podman machine inspect exits 0 if the machine exists and is registered.
+  # Also ensure the returned JSON is a non-empty array.
+  local inspect_out
+  if inspect_out=$(podman machine inspect "$machine_name" 2>/dev/null); then
+    if [[ -n "$inspect_out" && "$inspect_out" != "[]" ]]; then
+      return 0
+    fi
+  fi
+  return 1
 }
 
 podman_machine_running() {
   local machine_name="$1"
-  podman machine list --format '{{.Name}} {{.LastUp}}' 2>/dev/null | grep "^${machine_name}" | grep -q "Currently running"
+  if ! podman_machine_exists "$machine_name"; then
+    return 1
+  fi
+  local state
+  state=$(podman machine inspect "$machine_name" --format '{{.State}}' 2>/dev/null || echo "")
+  if [[ "$state" =~ ^[Rr]unning$ ]]; then
+    return 0
+  fi
+  podman machine list --format '{{.Name}} {{.LastUp}}' 2>/dev/null | grep "^${machine_name}" | grep -qi "Currently running"
+}
+
+podman_machine_recover_stale() {
+  local machine_name="$1"
+  ui_warning "Removing stale or corrupted Podman machine '$machine_name'..."
+  podman machine rm -f "$machine_name" >/dev/null 2>&1 || true
 }
 
 # ── Podman Installation ─────────────────────────────────────────────────────
@@ -54,12 +74,12 @@ podman_install() {
 
 podman_machine_init() {
   local machine_name="$1"
-  local cpus="$2"
-  local memory_mb="$3"
-  local disk_gb="$4"
+  local cpus="${2:-4}"
+  local memory_mb="${3:-8192}"
+  local disk_gb="${4:-60}"
 
   if podman_machine_exists "$machine_name"; then
-    ui_success "Podman machine '$machine_name' already exists"
+    ui_success "Podman machine '$machine_name' already exists and is valid"
     return 0
   fi
 
@@ -72,9 +92,27 @@ podman_machine_init() {
     --disk-size "$disk_gb" \
     --volume "$HOME:$HOME" \
     "$machine_name" 2>&1); then
-    # Treat "already exists" as success — idempotent
-    if echo "$init_output" | grep -q 'already exists'; then
-      ui_success "Podman machine '$machine_name' already exists (detected via init)"
+    # If init reported already exists, check if machine is actually valid
+    if echo "$init_output" | grep -qi 'already exists'; then
+      if podman_machine_exists "$machine_name"; then
+        ui_success "Podman machine '$machine_name' exists and is valid"
+        return 0
+      fi
+      # Stale definition detected: init reported already exists, but machine is not valid
+      ui_warning "Podman machine '$machine_name' is in a stale/inconsistent state. Recovering..."
+      podman_machine_recover_stale "$machine_name"
+
+      ui_step "Re-initializing Podman machine '$machine_name'..."
+      if ! init_output=$(podman machine init \
+        --cpus "$cpus" \
+        --memory "$memory_mb" \
+        --disk-size "$disk_gb" \
+        --volume "$HOME:$HOME" \
+        "$machine_name" 2>&1); then
+        ui_error "Podman machine re-initialization failed: $init_output"
+        return 1
+      fi
+      ui_success "Podman machine '$machine_name' initialized after recovery"
       return 0
     fi
     ui_error "Podman machine initialization failed: $init_output"
@@ -87,18 +125,40 @@ podman_machine_init() {
 
 podman_machine_start() {
   local machine_name="$1"
+  local cpus="${2:-4}"
+  local memory_mb="${3:-8192}"
+  local disk_gb="${4:-60}"
 
-  if podman_machine_running "$machine_name"; then
-    ui_success "Podman machine '$machine_name' is already running"
+  if podman_machine_running "$machine_name" && podman info >/dev/null 2>&1; then
+    ui_success "Podman machine '$machine_name' is already running and responsive"
     return 0
   fi
 
   ui_step "Starting Podman machine '$machine_name'..."
-  podman machine start "$machine_name"
+  local start_output
+  if ! start_output=$(podman machine start "$machine_name" 2>&1); then
+    if echo "$start_output" | grep -qiE 'VM does not exist|not found|does not exist|cannot find'; then
+      ui_warning "Podman machine start failed ($start_output). Recovering stale machine..."
+      podman_machine_recover_stale "$machine_name"
+      if ! podman_machine_init "$machine_name" "$cpus" "$memory_mb" "$disk_gb"; then
+        ui_error "Failed to re-initialize Podman machine '$machine_name'"
+        return 1
+      fi
+      ui_step "Starting re-created Podman machine '$machine_name'..."
+      if ! start_output=$(podman machine start "$machine_name" 2>&1); then
+        ui_error "Podman machine start failed after recreation: $start_output"
+        return 1
+      fi
+    else
+      ui_error "Podman machine start failed: $start_output"
+      return 1
+    fi
+  fi
 
   # Wait for the machine to be ready
   local timeout=60
   local elapsed=0
+  ui_step "Waiting for Podman service readiness..."
   while ! podman info >/dev/null 2>&1; do
     sleep 2
     elapsed=$((elapsed + 2))
@@ -108,7 +168,7 @@ podman_machine_start() {
     fi
   done
 
-  ui_success "Podman machine '$machine_name' is running"
+  ui_success "Podman machine '$machine_name' is running and responsive"
   return 0
 }
 

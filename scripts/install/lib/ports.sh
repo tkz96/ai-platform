@@ -99,6 +99,12 @@ port_read_from_manifests() {
   done
 }
 
+port_is_dashboard() {
+  local port="${1:-8888}"
+  curl -sf --max-time 1 "http://127.0.0.1:${port}/api/setup/status" >/dev/null 2>&1 || \
+    (curl -sf --max-time 1 "http://127.0.0.1:${port}/" 2>/dev/null | grep -qi "AI Platform")
+}
+
 # ── Interactive Port Conflict Resolution ───────────────────────────────────
 
 port_resolve_conflict() {
@@ -114,6 +120,18 @@ port_resolve_conflict() {
 
   local process_info
   process_info=$(port_process_info "$default_port")
+
+  if is_noninteractive; then
+    local alt_port
+    alt_port=$(port_find_available $((default_port + 1)))
+    if [[ -n "$alt_port" ]]; then
+      ui_warning "$service_name: port $default_port in use ($process_info). Non-interactive mode using alternative port $alt_port."
+      state_set_port "$state_key" "$alt_port"
+      return 0
+    fi
+    ui_error "$service_name: port $default_port in use and no alternative port found"
+    return 1
+  fi
 
   echo
   ui_warning "Port $default_port is required by $service_name."

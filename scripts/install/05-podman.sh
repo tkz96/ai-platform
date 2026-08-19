@@ -27,17 +27,9 @@ machine_cpus=$(state_get_podman_machine "cpus" "4")
 machine_memory=$(state_get_podman_machine "memory_mb" "8192")
 machine_disk=$(state_get_podman_machine "disk_gb" "60")
 
-# Initialize Podman machine
-# If the machine already exists (e.g. from a previous failed run), skip init
-# and proceed directly to start — idempotent by design.
-if podman_machine_exists "$machine_name"; then
-  ui_success "Podman machine '$machine_name' already exists — skipping init"
-else
-  podman_machine_init "$machine_name" "$machine_cpus" "$machine_memory" "$machine_disk"
-fi
-
-# Start Podman machine (start is also idempotent via podman_machine_start)
-podman_machine_start "$machine_name"
+# Initialize and start Podman machine with self-healing lifecycle
+podman_machine_init "$machine_name" "$machine_cpus" "$machine_memory" "$machine_disk"
+podman_machine_start "$machine_name" "$machine_cpus" "$machine_memory" "$machine_disk"
 
 # Verify Podman is functional
 while true; do
@@ -45,6 +37,11 @@ while true; do
   if podman info >/dev/null 2>&1; then
     ui_success "Podman is ready"
     break
+  fi
+
+  if is_noninteractive; then
+    ui_error "Podman machine is not responding to 'podman info'."
+    exit 1
   fi
 
   ui_recoverable "Podman is not responding." "Check Podman machine status with 'podman machine list' or restart with 'podman machine start $machine_name'.\n  Press Enter to re-check."
