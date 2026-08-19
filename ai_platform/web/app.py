@@ -30,4 +30,4 @@ def create_app() -> FastAPI:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("ai_ai_platform.web.app:app", host="127.0.0.1", port=8888, reload=True)
+    uvicorn.run("ai_platform.web.app:app", host="127.0.0.1", port=8888, reload=True)

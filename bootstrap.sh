@@ -674,10 +674,27 @@ run_bootstrap_default() {
 
   # 3. Synchronize python dependencies
   ui_step "Verifying platform Python dependencies via uv..."
-  (cd "$PROJECT_ROOT" && uv sync --quiet)
-  ui_success "Python environment ready"
+  local sync_output
+  if ! sync_output=$(cd "$PROJECT_ROOT" && uv sync 2>&1); then
+    ui_error "Failed to synchronize Python dependencies via uv:"
+    echo "$sync_output"
+    ui_quit_prompt "Dependency setup failed" "Run 'uv sync' manually to inspect dependency errors."
+  fi
 
-  # 4. Launch web dashboard
+  # Empirical verification of uvicorn and fastapi runtime readiness
+  if ! (cd "$PROJECT_ROOT" && uv run python -c "import uvicorn, fastapi" >/dev/null 2>&1 && uv run which uvicorn >/dev/null 2>&1); then
+    ui_error "Python environment validation failed: uvicorn or fastapi executable missing after uv sync."
+    ui_quit_prompt "Environment setup incomplete" "Ensure dependencies in pyproject.toml are locked properly."
+  fi
+  ui_success "Python environment ready (FastAPI & Uvicorn verified)"
+
+  # 4. Pre-check port 8888 collision
+  if nc -z 127.0.0.1 8888 2>/dev/null; then
+    ui_warning "Port 8888 is already in use by another process."
+    ui_info "Closing existing listener or launch directly on another port if needed."
+  fi
+
+  # 5. Launch web dashboard
   echo
   echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   echo -e "  ${BOLD}${CYAN}AI Platform Web Dashboard Launching${RESET}"
@@ -691,9 +708,16 @@ run_bootstrap_default() {
   # Auto-open browser in background
   (sleep 1.2 && open "http://127.0.0.1:8888" 2>/dev/null || true) &
 
-  # Start FastAPI Uvicorn server in foreground
-  (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888)
+  # Start FastAPI Uvicorn server with graceful failure fallback
+  if ! (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888); then
+    echo
+    ui_error "Web UI server stopped or failed to launch."
+    if ui_confirm "Would you like to fall back to headless CLI installation mode?" "Y"; then
+      run_install
+    fi
+  fi
 }
+
 
 # ── Main ────────────────────────────────────────────────────────────────────
 

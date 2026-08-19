@@ -183,3 +183,29 @@ def test_stdlib_platform_import() -> None:
     assert hasattr(stdlib_platform, "python_version")
     assert stdlib_platform.__name__ == "platform"
     assert "ai_platform" not in getattr(stdlib_platform, "__file__", "")
+
+
+def test_pyproject_dependencies_locking() -> None:
+    import tomllib
+
+    repo_root = Path(__file__).parent.parent
+    pyproject_file = repo_root / "pyproject.toml"
+    uv_lock_file = repo_root / "uv.lock"
+
+    assert pyproject_file.exists()
+    assert uv_lock_file.exists()
+
+    with open(pyproject_file, "rb") as f:
+        data = tomllib.load(f)
+
+    # Verify dependencies key belongs to [project] table
+    project_table = data.get("project", {})
+    assert "dependencies" in project_table
+    deps = project_table["dependencies"]
+    assert any("fastapi" in d for d in deps)
+    assert any("uvicorn" in d for d in deps)
+
+    # Verify uv.lock contains locked runtime packages
+    uv_lock_text = uv_lock_file.read_text()
+    assert 'name = "uvicorn"' in uv_lock_text
+    assert 'name = "fastapi"' in uv_lock_text

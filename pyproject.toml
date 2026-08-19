@@ -3,12 +3,24 @@ name = "ai-platform"
 version = "0.1.0"
 description = "Self-hosted AI Platform"
 requires-python = ">=3.12"
+dependencies = [
+
+  "fastapi>=0.110.0",
+  "jinja2",
+  "pydantic>=2.0.0",
+  "python-multipart>=0.0.9",
+  "pyyaml",
+  "rich",
+  "typer",
+  "uvicorn>=0.28.0",
+]
 
 [project.scripts]
 ai-platform = "ai_platform.cli:app"
 
+[tool.uv]
+package = false
 
-dependencies = ["fastapi>=0.110.0", "jinja2", "pydantic>=2.0.0", "python-multipart>=0.0.9", "pyyaml", "rich", "typer", "uvicorn>=0.28.0"]
 
 [dependency-groups]
 dev = [
