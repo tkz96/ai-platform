@@ -191,6 +191,54 @@ class SetupEngine:
         yield f"event: log\ndata: {json.dumps({'line': '🎉 All phases completed successfully! Platform is fully provisioned.'})}\n\n"
         yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
 
+    def auto_fix_phase(self, phase_id: str) -> dict[str, Any]:
+        """Execute automated targeted diagnostic repair for a specific phase."""
+        env = os.environ.copy()
+        env["PROJECT_ROOT"] = str(self.project_root)
+
+        if phase_id in ("python", "uv"):
+            cmd = ["uv", "sync", "--refresh"]
+        elif phase_id == "networking":
+            cmd = [
+                "bash",
+                "-c",
+                "source scripts/install/lib/networking.sh && restart_mac_dhcp_server",
+            ]
+        elif phase_id == "render":
+            cmd = ["uv", "run", "python", "bootstrap.py", "render"]
+        elif phase_id == "deploy":
+            cmd = ["uv", "run", "python", "bootstrap.py", "deploy"]
+        else:
+            # General fallback: re-run phase script
+            phases_map = {p.id: p for p in self.get_phase_definitions()}
+            phase = phases_map.get(phase_id)
+            if not phase:
+                return {"success": False, "error": f"Invalid phase ID: {phase_id}"}
+            cmd = ["bash", str(self.scripts_dir / phase.script)]
+
+        try:
+            res = subprocess.run(
+                cmd,
+                cwd=str(self.project_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=60,
+                env=env,
+            )
+            status, details, err = self.check_empirical_phase_status(phase_id)
+            return {
+                "success": res.returncode == 0 or status == "completed",
+                "phase_id": phase_id,
+                "exit_code": res.returncode,
+                "output": clean_ansi(res.stdout),
+                "empirical_status": status,
+                "empirical_details": details,
+                "error": err,
+            }
+        except Exception as e:
+            return {"success": False, "phase_id": phase_id, "error": str(e)}
+
     def run_full_audit(self) -> dict[str, Any]:
         """Execute comprehensive system diagnostic audit across host, VM, networking, and containers."""
         return run_full_audit(self.project_root)

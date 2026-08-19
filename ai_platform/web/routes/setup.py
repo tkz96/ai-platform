@@ -115,3 +115,20 @@ def reset_phase_state(
             pass
 
     return JSONResponse(content={"success": True, "phase_id": phase_id})
+
+
+@router.post("/api/setup/auto-fix-phase")
+def auto_fix_phase_endpoint(
+    phase_id: str = Form(...),
+) -> JSONResponse:
+    """Execute automated diagnostic self-healing repair for a specific setup phase."""
+    valid_ids = {p.id for p in get_canonical_phase_definitions()}
+    if phase_id not in valid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid phase ID '{phase_id}'. Allowed phase IDs: {sorted(list(valid_ids))}",
+        )
+
+    engine = _get_setup_engine()
+    res = engine.auto_fix_phase(phase_id)
+    return JSONResponse(content=res)

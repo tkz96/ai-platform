@@ -169,6 +169,37 @@ ui_quit_prompt() {
   exit 1
 }
 
+ui_recovery_menu() {
+  local title="$1"
+  local error_msg="$2"
+  shift 2
+  local options=("$@")
+
+  echo >&2
+  echo -e "  ${RED}${BOLD}━━━ Recovery Required: ${title} ━━━${RESET}" >&2
+  echo -e "  ${RED}${SYM_FAIL}${RESET} ${error_msg}" >&2
+  echo >&2
+  echo -e "  ${BOLD}Select a recovery action to continue without exiting:${RESET}" >&2
+  echo >&2
+  local i
+  for i in "${!options[@]}"; do
+    echo -e "    ${CYAN}[$((i + 1))]${RESET} ${options[$i]}" >&2
+  done
+  echo >&2
+
+  while true; do
+    printf "  ${BOLD}Select option (1-%d):${RESET} " "${#options[@]}" >&2
+    local choice
+    read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
+      echo "$((choice - 1))"
+      return 0
+    fi
+    ui_warning "Invalid choice. Please enter 1-${#options[@]}." >&2
+  done
+}
+
+
 _UI_LIVE_LINES=0
 
 ui_live_status() {

@@ -125,29 +125,47 @@ state_run_phase() {
     return 0
   fi
 
-  if [[ "$status" == "failed" || "$status" == "aborted" ]]; then
-    ui_warning "$phase_name previously $status"
-    if ! ui_confirm "Retry $phase_name?"; then
-      ui_error "Skipping $phase_name"
-      return 1
-    fi
-  fi
+  while true; do
+    state_set_phase "$phase_name" "in_progress"
 
-  state_set_phase "$phase_name" "in_progress"
-
-  if bash "$phase_script"; then
-    state_set_phase "$phase_name" "completed"
-    return 0
-  else
-    local rc=$?
-    if [[ $rc -eq 130 ]]; then
-      state_set_phase "$phase_name" "aborted"
+    if bash "$phase_script"; then
+      state_set_phase "$phase_name" "completed"
+      return 0
     else
-      state_set_phase "$phase_name" "failed"
+      local rc=$?
+      if [[ $rc -eq 130 ]]; then
+        state_set_phase "$phase_name" "aborted"
+      else
+        state_set_phase "$phase_name" "failed"
+      fi
+
+      local choice
+      choice=$(ui_recovery_menu "$phase_name" "Phase script failed (exit code $rc)" \
+        "Auto-Fix & Retry phase execution" \
+        "Reset phase state and re-run" \
+        "Inspect phase diagnostics" \
+        "Skip phase and continue")
+
+      case "$choice" in
+        0|1)
+          ui_info "Retrying $phase_name..."
+          continue
+          ;;
+        2)
+          ui_info "Diagnostic report for $phase_name:"
+          echo -e "  Phase script: $phase_script"
+          echo -e "  Current status: $(state_phase_status "$phase_name")"
+          continue
+          ;;
+        3)
+          ui_warning "Skipping phase $phase_name at user request."
+          return 0
+          ;;
+      esac
     fi
-    return 1
-  fi
+  done
 }
+
 
 
 # ── Rollback ────────────────────────────────────────────────────────────────

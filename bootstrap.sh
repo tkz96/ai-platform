@@ -672,51 +672,120 @@ run_bootstrap_default() {
     ui_warning "Sudo authentication skipped — networking phase will prompt if required"
   fi
 
-  # 3. Synchronize python dependencies
+  # 3. Synchronize python dependencies with interactive self-healing
   ui_step "Verifying platform Python dependencies via uv..."
-  local sync_output
-  if ! sync_output=$(cd "$PROJECT_ROOT" && uv sync 2>&1); then
-    ui_error "Failed to synchronize Python dependencies via uv:"
-    echo "$sync_output"
-    ui_quit_prompt "Dependency setup failed" "Run 'uv sync' manually to inspect dependency errors."
-  fi
+  while true; do
+    local sync_output
+    if sync_output=$(cd "$PROJECT_ROOT" && uv sync 2>&1) && \
+       (cd "$PROJECT_ROOT" && uv run python -c "import uvicorn, fastapi" >/dev/null 2>&1 && uv run which uvicorn >/dev/null 2>&1); then
+      ui_success "Python environment ready (FastAPI & Uvicorn verified)"
+      break
+    else
+      ui_warning "Python dependency validation failed."
+      local venv_choice
+      venv_choice=$(ui_recovery_menu "Python Virtual Environment" "Missing required packages or corrupted virtualenv" \
+        "Refresh & Re-sync dependencies (uv sync --refresh)" \
+        "Rebuild .venv in-place (rm -rf .venv && uv venv && uv sync)" \
+        "Retry verification")
 
-  # Empirical verification of uvicorn and fastapi runtime readiness
-  if ! (cd "$PROJECT_ROOT" && uv run python -c "import uvicorn, fastapi" >/dev/null 2>&1 && uv run which uvicorn >/dev/null 2>&1); then
-    ui_error "Python environment validation failed: uvicorn or fastapi executable missing after uv sync."
-    ui_quit_prompt "Environment setup incomplete" "Ensure dependencies in pyproject.toml are locked properly."
-  fi
-  ui_success "Python environment ready (FastAPI & Uvicorn verified)"
-
-  # 4. Pre-check port 8888 collision
-  if nc -z 127.0.0.1 8888 2>/dev/null; then
-    ui_warning "Port 8888 is already in use by another process."
-    ui_info "Closing existing listener or launch directly on another port if needed."
-  fi
-
-  # 5. Launch web dashboard
-  echo
-  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-  echo -e "  ${BOLD}${CYAN}AI Platform Web Dashboard Launching${RESET}"
-  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-  echo -e "  Opening web deck: ${BOLD}${GREEN}http://127.0.0.1:8888${RESET}"
-  echo -e "  Use the ${BOLD}Setup & Provision${RESET} tab to configure networking,"
-  echo -e "  generate security keys, and deploy all control plane services."
-  echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-  echo
-
-  # Auto-open browser in background
-  (sleep 1.2 && open "http://127.0.0.1:8888" 2>/dev/null || true) &
-
-  # Start FastAPI Uvicorn server with graceful failure fallback
-  if ! (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port 8888); then
-    echo
-    ui_error "Web UI server stopped or failed to launch."
-    if ui_confirm "Would you like to fall back to headless CLI installation mode?" "Y"; then
-      run_install
+      case "$venv_choice" in
+        0)
+          ui_info "Re-syncing dependencies..."
+          (cd "$PROJECT_ROOT" && uv sync --refresh) || true
+          ;;
+        1)
+          ui_info "Rebuilding virtual environment from scratch..."
+          (cd "$PROJECT_ROOT" && rm -rf .venv && uv venv && uv sync) || true
+          ;;
+        2)
+          ui_info "Retrying verification..."
+          ;;
+      esac
     fi
-  fi
+  done
+
+  # 4. Interactive Port Collision Handler
+  local target_port=8888
+  while nc -z 127.0.0.1 "$target_port" 2>/dev/null; do
+    ui_warning "Port $target_port is currently in use."
+    local occupant_pid
+    occupant_pid=$(lsof -ti :"$target_port" 2>/dev/null | head -1 || echo "")
+    
+    local port_choice
+    if [[ -n "$occupant_pid" ]]; then
+      local occupant_cmd
+      occupant_cmd=$(ps -p "$occupant_pid" -o comm= 2>/dev/null || echo "unknown")
+      ui_info "Occupied by process PID $occupant_pid ($occupant_cmd)"
+
+      port_choice=$(ui_recovery_menu "Port Collision ($target_port)" "Port $target_port is already bound by PID $occupant_pid ($occupant_cmd)" \
+        "Bind Web UI to next available port ($((target_port + 1)))" \
+        "Terminate process $occupant_pid and use port $target_port" \
+        "Retry port $target_port")
+
+      case "$port_choice" in
+        0)
+          target_port=$((target_port + 1))
+          ui_info "Switched target port to $target_port"
+          ;;
+        1)
+          ui_info "Terminating process $occupant_pid..."
+          kill -9 "$occupant_pid" 2>/dev/null || true
+          sleep 1
+          ;;
+        2)
+          ui_info "Retrying port $target_port..."
+          ;;
+      esac
+    else
+      target_port=$((target_port + 1))
+      ui_info "Switched target port to $target_port"
+    fi
+  done
+
+  # 5. Launch web dashboard with retry loop
+  while true; do
+    echo
+    echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "  ${BOLD}${CYAN}AI Platform Web Dashboard Launching${RESET}"
+    echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "  Opening web deck: ${BOLD}${GREEN}http://127.0.0.1:${target_port}${RESET}"
+    echo -e "  Use the ${BOLD}Setup & Provision${RESET} tab to configure networking,"
+    echo -e "  generate security keys, and deploy all control plane services."
+    echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo
+
+    # Auto-open browser in background
+    (sleep 1.2 && open "http://127.0.0.1:${target_port}" 2>/dev/null || true) &
+
+    # Start FastAPI Uvicorn server
+    if (cd "$PROJECT_ROOT" && uv run uvicorn ai_platform.web.app:app --host 127.0.0.1 --port "$target_port"); then
+      ui_info "Web UI server shut down normally."
+      break
+    else
+      local ui_choice
+      ui_choice=$(ui_recovery_menu "Web UI Server Error" "Uvicorn server exited unexpectedly" \
+        "Restart Web UI server on http://127.0.0.1:${target_port}" \
+        "Re-bind to a different port" \
+        "Switch to headless CLI installation mode")
+
+      case "$ui_choice" in
+        0)
+          ui_info "Restarting Web UI..."
+          ;;
+        1)
+          target_port=$((target_port + 1))
+          ui_info "Switching to port $target_port..."
+          ;;
+        2)
+          ui_info "Switching to headless CLI setup mode..."
+          run_install
+          break
+          ;;
+      esac
+    fi
+  done
 }
+
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

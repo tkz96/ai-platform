@@ -112,8 +112,22 @@ def test_setup_audit_endpoint():
 
 
 def test_setup_reset_phase_endpoint():
-    response = client.post("/api/setup/reset-phase", data={"phase_id": "08-render"})
+    response = client.post(
+        "/api/setup/reset-phase", data={"phase_id": "08-render", "confirm": "true"}
+    )
     assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["phase_id"] == "08-render"
+    assert response.json()["success"] is True
+    assert response.json()["phase_id"] == "08-render"
+
+
+def test_setup_engine_auto_fix_phase():
+    engine = SetupEngine(PROJECT_ROOT)
+    res = engine.auto_fix_phase("08-render")
+    assert "success" in res
+    assert res["phase_id"] == "08-render"
+
+
+def test_setup_auto_fix_endpoint():
+    response = client.post("/api/setup/auto-fix-phase", data={"phase_id": "08-render"})
+    assert response.status_code == 200
+    assert response.json()["phase_id"] == "08-render"
