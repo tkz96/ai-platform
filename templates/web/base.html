@@ -20,7 +20,7 @@
 
 
   <script>
-    // Global toast notifications handler
+    // Global toast notifications & setup provisioning state handlers
     document.addEventListener('alpine:init', () => {
       Alpine.store('toasts', {
         items: [],
@@ -30,6 +30,110 @@
           setTimeout(() => {
             this.items = this.items.filter(t => t.id !== id);
           }, 3500);
+        }
+      });
+
+      Alpine.store('setup', {
+        isRunning: false,
+        activePhase: '',
+        terminalOutput: '',
+        showRemediation: {},
+        eventSource: null,
+
+        startPhase(phaseId) {
+          if (this.isRunning) return;
+          this.isRunning = true;
+          this.activePhase = phaseId;
+          this.terminalOutput += `\n[${new Date().toLocaleTimeString()}] >>> Triggering: ${phaseId}\n`;
+          this.scrollTerminal();
+
+          if (this.eventSource) {
+            this.eventSource.close();
+          }
+
+          const es = new EventSource(`/api/setup/stream?phase=${phaseId}`);
+          this.eventSource = es;
+
+          es.addEventListener('log', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              this.terminalOutput += data.line + '\n';
+              this.scrollTerminal();
+            } catch (err) {}
+          });
+
+          es.addEventListener('step_start', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              Alpine.store('toasts').add(`Starting: ${data.name}`, 'info');
+            } catch (err) {}
+          });
+
+          es.addEventListener('step_done', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              Alpine.store('toasts').add(`Phase ${data.phase_id} completed!`, 'success');
+              htmx.trigger('#setup-checklist-container', 'refreshStatus');
+              htmx.trigger('body', 'refreshAll');
+            } catch (err) {}
+          });
+
+          es.addEventListener('error', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              if (data.remediation) {
+                this.showRemediation[data.phase_id] = true;
+              }
+            } catch (err) {}
+            Alpine.store('toasts').add('Phase encountered an error. Check terminal & remediation.', 'info');
+            es.close();
+            this.eventSource = null;
+            this.isRunning = false;
+            this.activePhase = '';
+            htmx.trigger('#setup-checklist-container', 'refreshStatus');
+          });
+
+          es.addEventListener('complete', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              es.close();
+              this.eventSource = null;
+              this.isRunning = false;
+              this.activePhase = '';
+              htmx.trigger('#setup-checklist-container', 'refreshStatus');
+              htmx.trigger('body', 'refreshAll');
+              if (data.success) {
+                Alpine.store('toasts').add('Platform successfully provisioned!', 'success');
+                setTimeout(() => {
+                  const sTab = document.querySelector('#tab-services');
+                  if (sTab) sTab.click();
+                }, 1200);
+              }
+            } catch (err) {}
+          });
+
+          es.onerror = () => {
+            es.close();
+            this.eventSource = null;
+            this.isRunning = false;
+            this.activePhase = '';
+            htmx.trigger('#setup-checklist-container', 'refreshStatus');
+          };
+        },
+
+        toggleRemediation(phaseId) {
+          this.showRemediation[phaseId] = !this.showRemediation[phaseId];
+        },
+
+        scrollTerminal() {
+          setTimeout(() => {
+            const term = document.getElementById('setup-live-terminal');
+            if (term) term.scrollTop = term.scrollHeight;
+          }, 10);
+        },
+
+        clearTerminal() {
+          this.terminalOutput = '';
         }
       });
     });

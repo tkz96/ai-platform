@@ -141,6 +141,10 @@ def generate_compose_dict(resolved: ResolvedPlatform) -> dict[str, Any]:
         if manifest.env_file:
             svc_dict["env_file"] = manifest.env_file
 
+        # Command
+        if manifest.command:
+            svc_dict["command"] = manifest.command
+
         # Depends On
         if manifest.depends_on:
             svc_dict["depends_on"] = {

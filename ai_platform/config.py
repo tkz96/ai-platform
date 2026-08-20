@@ -35,6 +35,7 @@ class ServiceManifest(BaseModel):
     environment: list[str] = Field(default_factory=list)
     env_file: list[str] = Field(default_factory=list)
     depends_on: list[str] = Field(default_factory=list)
+    command: list[str] | str | None = None
     health: HealthCheck | None = None
 
 

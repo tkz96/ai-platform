@@ -89,11 +89,25 @@ def verify_remote_inference(
     ]
 
 
-def verify_e2e_completion(model_name: str = "default") -> dict[str, Any]:
+def verify_e2e_completion(
+    model_name: str = "default", root_dir: Path | None = None
+) -> dict[str, Any]:
     """Test LiteLLM /v1/chat/completions end-to-end to verify actual model backend routing."""
     import json
+    import os
     import time
     import urllib.request
+
+    target_root = root_dir or Path.cwd()
+    env_file = target_root / ".env"
+    master_key = os.environ.get("LITELLM_MASTER_KEY", "")
+    if not master_key and env_file.exists():
+        for line in env_file.read_text().splitlines():
+            if line.startswith("LITELLM_MASTER_KEY="):
+                master_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    if not master_key:
+        master_key = "sk-platform-test"
 
     url = "http://127.0.0.1:4000/v1/chat/completions"
     payload = {
@@ -108,7 +122,7 @@ def verify_e2e_completion(model_name: str = "default") -> dict[str, Any]:
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": "Bearer sk-platform-test",
+                "Authorization": f"Bearer {master_key}",
             },
             method="POST",
         )
@@ -137,7 +151,7 @@ def verify_platform(resolved: ResolvedPlatform, root_dir: Path | None = None) ->
     remote_results = verify_remote_inference(resolved, root_dir=target_root)
 
     # E2E verification
-    e2e_result = verify_e2e_completion(resolved.platform.default_model)
+    e2e_result = verify_e2e_completion(resolved.config.default_model, root_dir=target_root)
 
     all_local_ok = all(r["passed"] for r in local_results)
     all_remote_ok = all(r.get("passed", False) for r in remote_results) if remote_results else True

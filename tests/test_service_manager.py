@@ -32,3 +32,16 @@ def test_diagnose_service_dnsmasq():
     diag = sm.diagnose_service("dnsmasq")
     assert diag.operation == "diagnose:dnsmasq"
     assert "pid_file" in diag.detected_state
+
+
+def test_verify_platform_structure():
+    from ai_platform.config import resolve_platform
+    from ai_platform.verify import verify_platform
+
+    resolved = resolve_platform(PROJECT_ROOT)
+    results = verify_platform(resolved, root_dir=PROJECT_ROOT)
+    assert "local_services" in results
+    assert "remote_inference" in results
+    assert "e2e_completion" in results
+    assert "is_ready" in results
+    assert isinstance(results["local_services"], list)

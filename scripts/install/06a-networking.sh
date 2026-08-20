@@ -27,6 +27,21 @@ mkdir -p "$SECRETS_DIR/ssh"
 
 ui_header "Control Plane — Inference Cluster Network & Enrollment"
 
+# Pre-flight administrative privilege check
+if is_noninteractive; then
+  if ! sudo -n true >/dev/null 2>&1; then
+    ui_error "Phase '06a-networking' requires administrative privileges (sudo) to configure network interfaces, dnsmasq, and PF NAT."
+    ui_info "In non-interactive or Web mode, please ensure sudo credentials are cached (e.g. run 'sudo -v' in a terminal) or configure passwordless sudo."
+    exit 1
+  fi
+else
+  ui_step "Verifying administrative privileges (sudo)..."
+  if ! sudo -v; then
+    ui_error "Failed to acquire administrative privileges."
+    exit 1
+  fi
+fi
+
 # ═════════════════════════════════════════════════════════════════════════════
 # STAGE 1 — Mac Mini Dedicated Ethernet Interface Selection
 # ═════════════════════════════════════════════════════════════════════════════

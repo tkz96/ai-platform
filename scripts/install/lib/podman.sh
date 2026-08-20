@@ -47,6 +47,8 @@ podman_machine_running() {
 podman_machine_recover_stale() {
   local machine_name="$1"
   ui_warning "Removing stale or corrupted Podman machine '$machine_name'..."
+  podman system connection rm "$machine_name" >/dev/null 2>&1 || true
+  podman system connection rm "${machine_name}-root" >/dev/null 2>&1 || true
   podman machine rm -f "$machine_name" >/dev/null 2>&1 || true
 }
 
@@ -79,9 +81,14 @@ podman_machine_init() {
   local disk_gb="${4:-60}"
 
   if podman_machine_exists "$machine_name"; then
+    podman system connection default "$machine_name" >/dev/null 2>&1 || true
     ui_success "Podman machine '$machine_name' already exists and is valid"
     return 0
   fi
+
+  # Clean up any leftover orphan connections for this machine name before init
+  podman system connection rm "$machine_name" >/dev/null 2>&1 || true
+  podman system connection rm "${machine_name}-root" >/dev/null 2>&1 || true
 
   ui_step "Initializing Podman machine '$machine_name' (CPUs: $cpus, Memory: ${memory_mb}MB, Disk: ${disk_gb}GB)..."
 
@@ -95,6 +102,7 @@ podman_machine_init() {
     # If init reported already exists, check if machine is actually valid
     if echo "$init_output" | grep -qi 'already exists'; then
       if podman_machine_exists "$machine_name"; then
+        podman system connection default "$machine_name" >/dev/null 2>&1 || true
         ui_success "Podman machine '$machine_name' exists and is valid"
         return 0
       fi
@@ -112,6 +120,7 @@ podman_machine_init() {
         ui_error "Podman machine re-initialization failed: $init_output"
         return 1
       fi
+      podman system connection default "$machine_name" >/dev/null 2>&1 || true
       ui_success "Podman machine '$machine_name' initialized after recovery"
       return 0
     fi
@@ -119,6 +128,7 @@ podman_machine_init() {
     return 1
   fi
 
+  podman system connection default "$machine_name" >/dev/null 2>&1 || true
   ui_success "Podman machine '$machine_name' initialized"
   return 0
 }
@@ -128,6 +138,8 @@ podman_machine_start() {
   local cpus="${2:-4}"
   local memory_mb="${3:-8192}"
   local disk_gb="${4:-60}"
+
+  podman system connection default "$machine_name" >/dev/null 2>&1 || true
 
   if podman_machine_running "$machine_name" && podman info >/dev/null 2>&1; then
     ui_success "Podman machine '$machine_name' is already running and responsive"
@@ -155,11 +167,14 @@ podman_machine_start() {
     fi
   fi
 
+  podman system connection default "$machine_name" >/dev/null 2>&1 || true
+
   # Wait for the machine to be ready
   local timeout=60
   local elapsed=0
   ui_step "Waiting for Podman service readiness..."
   while ! podman info >/dev/null 2>&1; do
+    podman system connection default "$machine_name" >/dev/null 2>&1 || true
     sleep 2
     elapsed=$((elapsed + 2))
     if (( elapsed >= timeout )); then

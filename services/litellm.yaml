@@ -13,6 +13,13 @@ volumes:
 environment:
   - LITELLM_MASTER_KEY
   - LITELLM_DATABASE_URL
+  - DATABASE_URL
+
+command:
+  - --config
+  - /app/config.yaml
+  - --port
+  - "4000"
 
 depends_on:
   - postgres

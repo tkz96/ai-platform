@@ -3,87 +3,7 @@
      Empirical Ground-Truth State, One-Click Runner & Structured Remediation
      ========================================================================= -->
 
-<div style="display: flex; flex-direction: column; gap: 1.5rem;" x-data="{
-  isRunning: false,
-  activePhase: '',
-  terminalOutput: '',
-  showRemediation: {},
-  
-  startPhase(phaseId) {
-    this.isRunning = true;
-    this.activePhase = phaseId;
-    this.terminalOutput += `\n[${new Date().toLocaleTimeString()}] >>> Triggering: ${phaseId}\n`;
-    
-    const eventSource = new EventSource(`/api/setup/stream?phase=${phaseId}`);
-    
-    eventSource.addEventListener('log', (e) => {
-      const data = JSON.parse(e.data);
-      this.terminalOutput += data.line + '\n';
-      this.scrollTerminal();
-    });
-
-    eventSource.addEventListener('step_start', (e) => {
-      const data = JSON.parse(e.data);
-      if (window.Alpine) Alpine.store('toasts').add(`Starting: ${data.name}`, 'info');
-    });
-
-    eventSource.addEventListener('step_done', (e) => {
-      const data = JSON.parse(e.data);
-      if (window.Alpine) Alpine.store('toasts').add(`Phase ${data.phase_id} completed!`, 'success');
-      htmx.trigger('#setup-checklist-container', 'refreshStatus');
-      htmx.trigger('body', 'refreshAll');
-    });
-
-    eventSource.addEventListener('error', (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.remediation) {
-          this.showRemediation[data.phase_id] = true;
-        }
-      } catch (err) {}
-      if (window.Alpine) Alpine.store('toasts').add('Phase encountered an error. Check terminal & remediation.', 'info');
-      eventSource.close();
-      this.isRunning = false;
-      this.activePhase = '';
-      htmx.trigger('#setup-checklist-container', 'refreshStatus');
-    });
-
-    eventSource.addEventListener('complete', (e) => {
-      const data = JSON.parse(e.data);
-      eventSource.close();
-      this.isRunning = false;
-      this.activePhase = '';
-      htmx.trigger('#setup-checklist-container', 'refreshStatus');
-      htmx.trigger('body', 'refreshAll');
-      if (data.success) {
-        if (window.Alpine) Alpine.store('toasts').add('Platform successfully provisioned!', 'success');
-        setTimeout(() => {
-          // Switch to services tab on first successful full run
-          const sTab = document.querySelector('#tab-services');
-          if (sTab) sTab.click();
-        }, 1200);
-      }
-    });
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      this.isRunning = false;
-      this.activePhase = '';
-      htmx.trigger('#setup-checklist-container', 'refreshStatus');
-    };
-  },
-
-  scrollTerminal() {
-    this.$nextTick(() => {
-      const term = document.getElementById('setup-live-terminal');
-      if (term) term.scrollTop = term.scrollHeight;
-    });
-  },
-
-  clearTerminal() {
-    this.terminalOutput = '';
-  }
-}">
+<div style="display: flex; flex-direction: column; gap: 1.5rem;" x-data>
 
   <!-- 1. Overall Readiness Header Card -->
   <div class="glass-card" style="padding: 1.65rem; border-top: 2px solid {% if summary.is_fully_provisioned %}var(--status-emerald){% else %}var(--accent-primary){% endif %};">
@@ -109,18 +29,18 @@
         {% if not summary.is_fully_provisioned %}
         <button 
           class="btn btn-primary" 
-          :disabled="isRunning"
-          @click="startPhase('all')"
+          :disabled="$store.setup.isRunning"
+          @click="$store.setup.startPhase('all')"
           title="Run all remaining uncompleted provisioning phases">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" x-show="!isRunning"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" x-show="isRunning"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-          <span x-text="isRunning ? 'Provisioning in progress...' : 'Provision all remaining phases'"></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" x-show="!$store.setup.isRunning"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" x-show="$store.setup.isRunning"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          <span x-text="$store.setup.isRunning ? 'Provisioning in progress...' : 'Provision all remaining phases'"></span>
         </button>
         {% else %}
         <button 
           class="btn btn-secondary" 
-          :disabled="isRunning"
-          @click="startPhase('all')"
+          :disabled="$store.setup.isRunning"
+          @click="$store.setup.startPhase('all')"
           title="Re-run and verify all provisioning steps">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           <span>Re-verify all phases</span>
@@ -251,8 +171,8 @@
             {% if p.status != 'completed' %}
             <button 
               class="btn btn-primary btn-sm" 
-              :disabled="isRunning"
-              @click="startPhase('{{ p.id }}')"
+              :disabled="$store.setup.isRunning"
+              @click="$store.setup.startPhase('{{ p.id }}')"
               title="Execute phase {{ p.id }}">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               <span>Run phase</span>
@@ -260,8 +180,8 @@
             {% else %}
             <button 
               class="btn btn-secondary btn-sm" 
-              :disabled="isRunning"
-              @click="startPhase('{{ p.id }}')"
+              :disabled="$store.setup.isRunning"
+              @click="$store.setup.startPhase('{{ p.id }}')"
               title="Re-run phase {{ p.id }}">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Re-run</span>
@@ -277,7 +197,7 @@
             {% if p.status == 'failed' or p.status == 'not_started' %}
             <button 
               class="btn btn-secondary btn-sm" 
-              :disabled="isRunning"
+              :disabled="$store.setup.isRunning"
               hx-post="/api/setup/auto-fix-phase"
               hx-vals='{"phase_id": "{{ p.id }}"}'
               hx-target="#setup-checklist-container"
@@ -294,11 +214,11 @@
           {% if p.remediation %}
           <button 
             class="btn btn-secondary btn-sm" 
-            @click="showRemediation['{{ p.id }}'] = !showRemediation['{{ p.id }}']"
+            @click="$store.setup.toggleRemediation('{{ p.id }}')"
             style="font-size: 0.725rem;"
             title="View structured troubleshooting checklist">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span x-text="showRemediation['{{ p.id }}'] ? 'Hide guide' : 'Troubleshoot'"></span>
+            <span x-text="$store.setup.showRemediation['{{ p.id }}'] ? 'Hide guide' : 'Troubleshoot'"></span>
           </button>
           {% endif %}
 
@@ -307,7 +227,7 @@
         <!-- Structured Remediation & Troubleshooting Drawer -->
         {% if p.remediation %}
         <div 
-          x-show="showRemediation['{{ p.id }}']" 
+          x-show="$store.setup.showRemediation['{{ p.id }}']" 
           x-transition:enter="transition ease-out duration-180"
           x-transition:enter-start="opacity-0 transform -translate-y-1"
           x-transition:enter-end="opacity-100 transform translate-y-0"
@@ -366,16 +286,16 @@
   <div class="glass-card" style="padding: 1.35rem;" role="region" aria-label="Provisioning Execution Terminal">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
       <div style="display: flex; align-items: center; gap: 0.6rem;">
-        <span class="badge-dot" :class="isRunning ? 'pulse-dot' : ''" :style="{ background: isRunning ? 'var(--status-emerald)' : 'var(--text-tertiary)' }" aria-hidden="true"></span>
+        <span class="badge-dot" :class="$store.setup.isRunning ? 'pulse-dot' : ''" :style="{ background: $store.setup.isRunning ? 'var(--status-emerald)' : 'var(--text-tertiary)' }" aria-hidden="true"></span>
         <h3 style="font-size: 0.95rem; font-weight: 700; color: #ffffff; margin: 0;">Provisioning console output</h3>
-        <span class="badge badge-cyan" style="font-size: 0.65rem;" x-show="isRunning" x-text="`Executing: ${activePhase}`"></span>
+        <span class="badge badge-cyan" style="font-size: 0.65rem;" x-show="$store.setup.isRunning" x-text="`Executing: ${$store.setup.activePhase}`"></span>
       </div>
 
       <div style="display: flex; align-items: center; gap: 0.45rem;">
         <button 
           class="btn btn-secondary btn-sm" 
-          @click="copyToClipboard(terminalOutput, 'Console logs copied!')"
-          :disabled="!terminalOutput"
+          @click="copyToClipboard($store.setup.terminalOutput, 'Console logs copied!')"
+          :disabled="!$store.setup.terminalOutput"
           title="Copy full terminal output">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           <span>Copy logs</span>
@@ -383,8 +303,8 @@
 
         <button 
           class="btn btn-secondary btn-sm" 
-          @click="clearTerminal()"
-          :disabled="!terminalOutput"
+          @click="$store.setup.clearTerminal()"
+          :disabled="!$store.setup.terminalOutput"
           title="Clear console output">
           <span>Clear</span>
         </button>
@@ -396,7 +316,7 @@
       id="setup-live-terminal" 
       class="terminal-box" 
       style="height: 240px; overflow-y: auto; font-size: 0.775rem;"
-      x-text="terminalOutput || 'Waiting to execute provisioning phases... Click \'Provision all remaining phases\' or run an individual phase above.'">
+      x-text="$store.setup.terminalOutput || 'Waiting to execute provisioning phases... Click \'Provision all remaining phases\' or run an individual phase above.'">
     </div>
   </div>
 

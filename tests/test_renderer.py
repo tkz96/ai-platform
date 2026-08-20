@@ -40,6 +40,28 @@ def test_env_file_rendering() -> None:
     assert compose_dict["services"]["test_svc"]["env_file"] == [".env", ".env.local"]
 
 
+def test_command_rendering() -> None:
+    from ai_platform.config import ServiceManifest
+
+    repo_root = Path(__file__).parent.parent
+    resolved = resolve_platform(repo_root)
+    manifest = ServiceManifest(
+        name="cmd_svc",
+        image="img",
+        version_key="litellm",
+        command=["--config", "/app/config.yaml", "--port", "4000"],
+    )
+    resolved.services["cmd_svc"] = manifest
+    resolved.dependency_order.append("cmd_svc")
+    compose_dict = generate_compose_dict(resolved)
+    assert compose_dict["services"]["cmd_svc"]["command"] == [
+        "--config",
+        "/app/config.yaml",
+        "--port",
+        "4000",
+    ]
+
+
 def test_litellm_template_rendering() -> None:
     repo_root = Path(__file__).parent.parent
     resolved = resolve_platform(repo_root)

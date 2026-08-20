@@ -46,7 +46,10 @@ def test_podman_machine_recover_stale_command(tmp_path: Path):
     assert res.returncode == 0
     assert "Removing stale or corrupted Podman machine 'test-stale-vm'" in res.stdout
     assert log_file.exists()
-    assert "mock podman: machine rm -f test-stale-vm" in log_file.read_text()
+    log_content = log_file.read_text()
+    assert "mock podman: system connection rm test-stale-vm" in log_content
+    assert "mock podman: system connection rm test-stale-vm-root" in log_content
+    assert "mock podman: machine rm -f test-stale-vm" in log_content
 
 
 def test_podman_machine_init_handles_stale_recovery(tmp_path: Path):

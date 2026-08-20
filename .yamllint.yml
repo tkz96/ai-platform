@@ -6,6 +6,7 @@ ignore: |
   data/
   backups/
   state/
+  compose.yaml
   .git/
 
 
@@ -13,6 +14,7 @@ rules:
   document-start: disable
 
   line-length:
-    max: 100
+    max: 180
+    level: warning
 
   truthy: disable

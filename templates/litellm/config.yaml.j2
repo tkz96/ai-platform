@@ -5,22 +5,25 @@ model_list:
     litellm_params:
       model: openai/{{ node.runtime.active_model or (node.desired.models[0].model_name if node.desired.models else platform.default_model) }}
       api_base: {{ (node.desired.models[0].protocol if node.desired.models else 'http') }}://{{ node.identity.reserved_ip }}:{{ (node.desired.models[0].port if node.desired.models else 8080) }}/v1
+      api_key: "sk-ai-platform"
 {% endfor %}
 {% elif platform.inference and platform.inference.host %}
   - model_name: {{ platform.default_model }}
     litellm_params:
       model: openai/{{ platform.default_model }}
       api_base: {{ platform.inference.protocol }}://{{ platform.inference.host }}:{{ platform.inference.port }}/v1
+      api_key: "sk-ai-platform"
 {% else %}
   - model_name: {{ platform.default_model }}
     litellm_params:
       model: openai/{{ platform.default_model }}
       api_base: http://10.42.0.2:8080/v1
+      api_key: "sk-ai-platform"
 {% endif %}
 
 general_settings:
-  master_key: ${LITELLM_MASTER_KEY}
-  database_url: ${LITELLM_DATABASE_URL}
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
 
 litellm_settings:
   success_callback: ["langfuse"]
