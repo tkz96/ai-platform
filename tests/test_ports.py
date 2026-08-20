@@ -74,3 +74,68 @@ def test_port_resolve_conflict_noninteractive(tmp_path: Path):
         )
         assert res.returncode == 0
         assert "using alternative port" in res.stdout or "using alternative port" in res.stderr
+
+
+def test_bootstrap_help_includes_reset():
+    res = subprocess.run(
+        ["bash", str(PROJECT_ROOT / "bootstrap.sh"), "help"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0
+    assert "reset" in res.stdout
+    assert "factory-reset" in res.stdout or "Full factory reset" in res.stdout
+
+
+def test_factory_reset_cleans_state(tmp_path: Path):
+    # Setup mock state in tmp_path
+    state_dir = tmp_path / "state"
+    secrets_dir = tmp_path / "secrets"
+    state_dir.mkdir(parents=True)
+    secrets_dir.mkdir(parents=True)
+    (state_dir / "nodes.yaml").write_text("nodes: {}")
+    (secrets_dir / "token").write_text("test")
+    (tmp_path / ".env").write_text("TEST=1")
+    (tmp_path / ".install-state").write_text("done")
+
+    # Run run_factory_reset inside a subshell with mocked PROJECT_ROOT
+    script = f"""
+    export PROJECT_ROOT="{tmp_path}"
+    export NONINTERACTIVE=1
+    source "{UI_LIB}"
+    source "{STATE_LIB}"
+    source "{PORTS_LIB}"
+    source "{PROJECT_ROOT / "scripts" / "install" / "lib" / "podman.sh"}"
+    source "{PROJECT_ROOT / "scripts" / "install" / "lib" / "networking.sh"}"
+
+    # Extract run_factory_reset definition from bootstrap.sh
+    eval "$(sed -n '/run_factory_reset() {{/,/^}}/p' "{PROJECT_ROOT / "bootstrap.sh"}")"
+    run_factory_reset --force
+    """
+    res = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert res.returncode == 0
+    assert not (state_dir / "nodes.yaml").exists()
+    assert not (secrets_dir / "token").exists()
+    assert not (tmp_path / ".env").exists()
+    assert not (tmp_path / ".install-state").exists()
+
+
+def test_factory_reset_noninteractive_requires_force(tmp_path: Path):
+    script = f"""
+    export PROJECT_ROOT="{tmp_path}"
+    export NONINTERACTIVE=1
+    source "{UI_LIB}"
+    source "{STATE_LIB}"
+    source "{PORTS_LIB}"
+    source "{PROJECT_ROOT / "scripts" / "install" / "lib" / "podman.sh"}"
+    source "{PROJECT_ROOT / "scripts" / "install" / "lib" / "networking.sh"}"
+
+    eval "$(sed -n '/run_factory_reset() {{/,/^}}/p' "{PROJECT_ROOT / "bootstrap.sh"}")"
+    run_factory_reset
+    """
+    res = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert res.returncode == 1
+    assert (
+        "Nuclear factory reset requires interactive confirmation or --force" in res.stdout
+        or "Nuclear factory reset requires interactive confirmation or --force" in res.stderr
+    )

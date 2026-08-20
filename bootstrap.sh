@@ -112,11 +112,13 @@ Commands:
   backup              Create backup
   restore             Restore from backup
   destroy             Remove all containers and volumes
+  reset               Full factory reset (nuke VM, containers, state, and start fresh)
   connect-inference   Configure, connect & verify the inference PC
   help                Show this help
 
 Examples:
   ./bootstrap.sh                    # Install on a fresh Mac
+  ./bootstrap.sh reset              # Wipe and perform clean factory reset
   ./bootstrap.sh doctor             # Check if machine is ready
   ./bootstrap.sh status             # Check service health
   ./bootstrap.sh connect-inference  # Hook up the inference PC
@@ -632,6 +634,132 @@ run_destroy() {
   ui_success "Platform destroyed"
 }
 
+# ── Factory Reset ──────────────────────────────────────────────────────────
+
+run_factory_reset() {
+  ui_header "AI Platform Nuclear Factory Reset"
+
+  echo -e "  ${RED}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "  ${RED}${BOLD}🚨  CRITICAL WARNING: NUCLEAR FACTORY RESET  🚨${RESET}"
+  echo -e "  ${RED}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "  ${RED}${BOLD}THIS IS A NUCLEAR RESET. THIS ACTION CANNOT BE REVERSED.${RESET}"
+  echo -e "  ${RED}${BOLD}ALL OF YOUR DATA MUST BE BACKED UP BEFORE PROCEEDING.${RESET}"
+  echo
+  echo -e "  ${YELLOW}${BOLD}The following will be completely and permanently destroyed:${RESET}"
+  echo -e "    ${RED}${SYM_DOT}${RESET} Active dashboard and background orchestrator processes"
+  echo -e "    ${RED}${SYM_DOT}${RESET} All Podman containers, database storage, and persistent volumes"
+  echo -e "    ${RED}${SYM_DOT}${RESET} The entire 'ai-platform' Podman VM and all system connection sockets"
+  echo -e "    ${RED}${SYM_DOT}${RESET} All local cluster secrets, cryptographic keys, and .env files"
+  echo -e "    ${RED}${SYM_DOT}${RESET} All runtime node enrollments and network packet-forwarding rules"
+  echo -e "  ${RED}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo
+
+  if [[ "${1:-}" == "--force" || "${1:-}" == "-f" ]]; then
+    ui_warning "Forced nuclear reset requested via flag — bypassing interactive confirmations."
+  elif is_noninteractive; then
+    ui_error "Nuclear factory reset requires interactive confirmation or --force."
+    return 1
+  else
+    # ── Gate 1: Initial y/N Confirmation ──
+    if ! ui_confirm "Are you ABSOLUTELY sure you want to proceed with this NUCLEAR FACTORY RESET?" "N"; then
+      ui_info "Factory reset aborted by user."
+      return 1
+    fi
+
+    # ── Gate 2: Explicit Typed Confirmation Phrase ──
+    echo
+    echo -e "  ${BOLD}To prevent accidental deletion, type ${RED}NUCLEAR RESET${RESET}${BOLD} to confirm:${RESET}"
+    printf "  > "
+    local confirm_text=""
+    read -r confirm_text
+    if [[ "$confirm_text" != "NUCLEAR RESET" ]]; then
+      ui_warning "Confirmation text mismatch ('$confirm_text' != 'NUCLEAR RESET'). Factory reset aborted."
+      return 1
+    fi
+
+    # ── Gate 3: Administrator Password Verification ──
+    echo
+    ui_step "Administrative privilege verification required. Please authenticate with your password:"
+    sudo -k
+    if ! sudo -v; then
+      ui_error "Administrative password verification failed. Factory reset aborted."
+      return 1
+    fi
+    ui_success "Administrative authentication verified"
+
+    # ── Gate 4: Final y/N Confirmation ──
+    echo
+    if ! ui_confirm "FINAL CONFIRMATION: Irrevocably destroy all platform data, VM, and volumes now?" "N"; then
+      ui_info "Factory reset aborted at final confirmation."
+      return 1
+    fi
+  fi
+
+  # 1. Terminate any running web dashboard processes on port 8888, 8889, 8765
+  ui_step "Stopping active dashboard and orchestrator processes..."
+  local pids
+  pids=$(lsof -ti :8888,8889,8765 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      kill -15 "$pid" 2>/dev/null || true
+    done <<< "$pids"
+    sleep 1
+    pids=$(lsof -ti :8888,8889,8765 2>/dev/null || true)
+    if [[ -n "$pids" ]]; then
+      while IFS= read -r pid; do
+        [[ -z "$pid" ]] && continue
+        kill -9 "$pid" 2>/dev/null || true
+      done <<< "$pids"
+    fi
+  fi
+
+  # 2. Stop and remove containers and volumes
+  ui_step "Tearing down Podman containers and volumes..."
+  if command -v podman >/dev/null 2>&1; then
+    if [[ -f "$PROJECT_ROOT/compose.yaml" ]]; then
+      local compose_cmd
+      compose_cmd=$(podman_compose_cmd 2>/dev/null || echo "")
+      if [[ -n "$compose_cmd" ]]; then
+        (cd "$PROJECT_ROOT" && $compose_cmd down -v --remove-orphans >/dev/null 2>&1) || true
+      fi
+    fi
+    local containers
+    containers=$(podman ps -aq --filter "name=postgres|redis|clickhouse|langfuse|litellm|caddy" 2>/dev/null || true)
+    if [[ -n "$containers" ]]; then
+      podman rm -f $containers >/dev/null 2>&1 || true
+    fi
+  fi
+
+  # 3. Destroy Podman machine and clean system connections
+  ui_step "Destroying Podman VM and cleaning connections..."
+  local machine_name="ai-platform"
+  podman system connection rm "$machine_name" >/dev/null 2>&1 || true
+  podman system connection rm "${machine_name}-root" >/dev/null 2>&1 || true
+  if podman_machine_exists "$machine_name" 2>/dev/null; then
+    podman machine rm -f "$machine_name" >/dev/null 2>&1 || true
+  fi
+
+  # 4. Tear down host networking
+  ui_step "Resetting host networking and DHCP services..."
+  stop_mac_dhcp_server 2>/dev/null || true
+  disable_mac_nat_gateway 2>/dev/null || true
+
+  # 5. Clean local state, generated artifacts, and secrets
+  ui_step "Wiping local runtime state and generated configurations..."
+  rm -rf "$PROJECT_ROOT/.install-state" \
+         "$PROJECT_ROOT/state" \
+         "$PROJECT_ROOT/secrets" \
+         "$PROJECT_ROOT/.env" \
+         "$PROJECT_ROOT/configs" \
+         "$PROJECT_ROOT/compose.yaml"
+  state_reset 2>/dev/null || true
+
+  echo
+  ui_success "Factory reset completed successfully — all platform data and containers destroyed"
+  return 0
+}
+
 # ── Web Dashboard Launch & Sudo Session ───────────────────────────────────────
 
 run_bootstrap_default() {
@@ -725,10 +853,52 @@ run_bootstrap_default() {
   # 4. Interactive Port Collision Handler & Dashboard Detection
   local target_port=8888
   if port_is_dashboard "$target_port"; then
+    if is_noninteractive; then
+      ui_success "AI Platform Web Dashboard is already running at http://127.0.0.1:${target_port}"
+      (sleep 0.5 && open "http://127.0.0.1:${target_port}" 2>/dev/null || true) &
+      return 0
+    fi
+
     echo
-    ui_success "AI Platform Web Dashboard is already running at http://127.0.0.1:${target_port}"
-    (sleep 0.5 && open "http://127.0.0.1:${target_port}" 2>/dev/null || true) &
-    return 0
+    ui_warning "An active AI Platform Web Dashboard was detected on port ${target_port}."
+    local dashboard_choice
+    dashboard_choice=$(ui_recovery_menu "Existing Dashboard Detected" "A running dashboard was found at http://127.0.0.1:${target_port}" \
+      "Open existing dashboard in browser (http://127.0.0.1:${target_port})" \
+      "Perform Factory Reset & Start Fresh (kill old stack, wipe VM/state, restart fresh)" \
+      "Launch on a new available port" \
+      "Cancel")
+
+    case "$dashboard_choice" in
+      0)
+        ui_info "Opening existing dashboard..."
+        (sleep 0.5 && open "http://127.0.0.1:${target_port}" 2>/dev/null || true) &
+        return 0
+        ;;
+      1)
+        ui_info "Initiating Factory Reset..."
+        if run_factory_reset; then
+          ui_step "Restarting setup sequence from fresh state..."
+          exec "$PROJECT_ROOT/bootstrap.sh"
+        else
+          ui_warning "Factory reset aborted. Returning to setup menu..."
+        fi
+        ;;
+      2)
+        local alt_port
+        alt_port=$(port_find_available $((target_port + 1)))
+        if [[ -n "$alt_port" ]]; then
+          ui_info "Switching Web UI to port $alt_port..."
+          target_port="$alt_port"
+        else
+          ui_error "Could not find available port for Web Dashboard"
+          return 1
+        fi
+        ;;
+      3)
+        ui_info "Exiting at user request."
+        return 0
+        ;;
+    esac
   fi
 
   while ! port_available "$target_port"; do
@@ -862,6 +1032,9 @@ main() {
     backup)             run_backup ;;
     restore)            run_restore "$@" ;;
     destroy)            run_destroy ;;
+    reset|factory-reset|--reset)
+      run_factory_reset "$@"
+      ;;
     connect-inference)  run_connect_inference ;;
     ui)                 run_ui ;;
     help|-h|--help)     show_help ;;
