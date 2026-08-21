@@ -107,7 +107,11 @@ def verify_e2e_completion(
                 master_key = line.split("=", 1)[1].strip().strip('"').strip("'")
                 break
     if not master_key:
-        master_key = "sk-platform-test"
+        return {
+            "passed": False,
+            "status": "CONFIG_ERROR (LITELLM_MASTER_KEY unavailable in environment or .env)",
+            "latency_ms": None,
+        }
 
     url = "http://127.0.0.1:4000/v1/chat/completions"
     payload = {
@@ -155,12 +159,13 @@ def verify_platform(resolved: ResolvedPlatform, root_dir: Path | None = None) ->
 
     all_local_ok = all(r["passed"] for r in local_results)
     all_remote_ok = all(r.get("passed", False) for r in remote_results) if remote_results else True
+    e2e_ok = bool(e2e_result.get("passed", False))
 
     return {
         "local_services": local_results,
         "remote_inference": remote_results,
         "e2e_completion": e2e_result,
-        "is_ready": all_local_ok and all_remote_ok,
+        "is_ready": all_local_ok and all_remote_ok and e2e_ok,
     }
 
 
@@ -168,9 +173,11 @@ def format_health_table(results: dict[str, Any] | list[dict[str, Any]]) -> Group
     if isinstance(results, list):
         local_results = results
         remote_results = []
+        e2e_result = None
     else:
         local_results = results.get("local_services", [])
         remote_results = results.get("remote_inference", [])
+        e2e_result = results.get("e2e_completion")
 
     local_table = Table(title="Local Platform Services (Control Plane)")
     local_table.add_column("Service", style="cyan", no_wrap=True)
@@ -205,4 +212,16 @@ def format_health_table(results: dict[str, Any] | list[dict[str, Any]]) -> Group
             f"[{http_style}]{r.get('http_status', 'N/A')}[/{http_style}]",
         )
 
-    return Group(local_table, remote_table)
+    tables: list[Table] = [local_table, remote_table]
+    if e2e_result:
+        e2e_table = Table(title="End-to-End Model Routing (LiteLLM -> Inference Node)")
+        e2e_table.add_column("Check", style="cyan")
+        e2e_table.add_column("Status", style="bold")
+        e2e_style = "green" if e2e_result.get("passed") else "red"
+        e2e_table.add_row(
+            "LiteLLM Chat Completion",
+            f"[{e2e_style}]{e2e_result.get('status', 'N/A')}[/{e2e_style}]",
+        )
+        tables.append(e2e_table)
+
+    return Group(*tables)
