@@ -93,9 +93,32 @@ def status(
 @app.command()
 def verify(
     root: Path | None = typer.Option(None, "--root", "-r", help="Repository root directory"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Validate configuration schema and check health status of services."""
-    status(root=root)
+    """Validate configuration schema and verify health status of services (exits non-zero on failure)."""
+    target_root = root or ROOT_DIR
+    if not json_output:
+        console.print("[bold blue]Validating configuration...[/bold blue]")
+    from ai_platform.config import resolve_platform
+
+    resolved = resolve_platform(target_root)
+    if not json_output:
+        console.print("[bold green]✓ Configuration valid.[/bold green]")
+
+    results = verify_platform(resolved, root_dir=target_root)
+
+    if json_output:
+        print(json.dumps(results, indent=2))
+    else:
+        table = format_health_table(results)
+        console.print(table)
+
+    if not results.get("is_ready", False):
+        if not json_output:
+            console.print(
+                "[bold red]✗ Platform verification failed (services or inference nodes not ready).[/bold red]"
+            )
+        sys.exit(1)
 
 
 @app.command()
