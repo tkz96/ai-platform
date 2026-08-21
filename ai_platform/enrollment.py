@@ -185,6 +185,33 @@ class DualStackServer(http.server.ThreadingHTTPServer):
         super().server_bind()
 
 
+def _is_ai_platform_process(pid: int) -> bool:
+    """Verify that a process belongs to AI Platform before terminating."""
+    import subprocess
+
+    try:
+        res = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        cmd = res.stdout.strip()
+        if not cmd:
+            return False
+        keywords = [
+            "ai_platform",
+            "enrollment",
+            "bootstrap.py",
+            "bootstrap.sh",
+            "uvicorn",
+            "ai-platform",
+        ]
+        return any(k in cmd for k in keywords)
+    except Exception:
+        return False
+
+
 def make_enrollment_server(
     root_dir: Path, host: str = "10.42.0.1", port: int = 8765
 ) -> DualStackServer:
@@ -208,8 +235,17 @@ def make_enrollment_server(
                             ["lsof", "-tiTCP:" + str(port)], capture_output=True, text=True
                         ).stdout.strip()
                         if pids:
-                            for pid in pids.split():
-                                subprocess.run(["kill", "-9", pid], capture_output=True)
+                            for pid_str in pids.split():
+                                try:
+                                    pid_int = int(pid_str)
+                                    if _is_ai_platform_process(pid_int):
+                                        subprocess.run(
+                                            ["kill", "-15", pid_str], capture_output=True
+                                        )
+                                        time.sleep(0.1)
+                                        subprocess.run(["kill", "-9", pid_str], capture_output=True)
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                 time.sleep(0.5)

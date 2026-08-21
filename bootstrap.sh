@@ -636,6 +636,23 @@ run_destroy() {
 
 # ── Factory Reset ──────────────────────────────────────────────────────────
 
+is_ai_platform_process() {
+  local pid="$1"
+  [[ -z "$pid" ]] && return 1
+  local cmd
+  cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+  [[ -z "$cmd" ]] && return 1
+  if [[ "$cmd" == *"ai_platform"* ]] || \
+     [[ "$cmd" == *"uvicorn"* ]] || \
+     [[ "$cmd" == *"bootstrap.py"* ]] || \
+     [[ "$cmd" == *"bootstrap.sh"* ]] || \
+     [[ "$cmd" == *"ai-platform"* ]] || \
+     [[ "$cmd" == *"$PROJECT_ROOT"* ]]; then
+    return 0
+  fi
+  return 1
+}
+
 run_factory_reset() {
   ui_header "AI Platform Nuclear Factory Reset"
 
@@ -702,14 +719,22 @@ run_factory_reset() {
   if [[ -n "$pids" ]]; then
     while IFS= read -r pid; do
       [[ -z "$pid" ]] && continue
-      kill -15 "$pid" 2>/dev/null || true
+      local cmd
+      cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+      if is_ai_platform_process "$pid"; then
+        kill -15 "$pid" 2>/dev/null || true
+      else
+        ui_warning "Port occupant (PID $pid: $cmd) is not an AI Platform process. Preserving."
+      fi
     done <<< "$pids"
     sleep 1
     pids=$(lsof -ti :8888,8889,8765 2>/dev/null || true)
     if [[ -n "$pids" ]]; then
       while IFS= read -r pid; do
         [[ -z "$pid" ]] && continue
-        kill -9 "$pid" 2>/dev/null || true
+        if is_ai_platform_process "$pid"; then
+          kill -9 "$pid" 2>/dev/null || true
+        fi
       done <<< "$pids"
     fi
   fi
@@ -1047,4 +1072,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
