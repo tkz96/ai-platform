@@ -81,7 +81,10 @@ podman_machine_init() {
   local disk_gb="${4:-60}"
 
   if podman_machine_exists "$machine_name"; then
-    podman system connection default "$machine_name" >/dev/null 2>&1 || true
+    if ! podman system connection default "$machine_name" >/dev/null 2>&1; then
+      ui_error "Failed to set default system connection to '$machine_name'"
+      return 1
+    fi
     ui_success "Podman machine '$machine_name' already exists and is valid"
     return 0
   fi
@@ -102,7 +105,10 @@ podman_machine_init() {
     # If init reported already exists, check if machine is actually valid
     if echo "$init_output" | grep -qi 'already exists'; then
       if podman_machine_exists "$machine_name"; then
-        podman system connection default "$machine_name" >/dev/null 2>&1 || true
+        if ! podman system connection default "$machine_name" >/dev/null 2>&1; then
+          ui_error "Failed to set default system connection to '$machine_name'"
+          return 1
+        fi
         ui_success "Podman machine '$machine_name' exists and is valid"
         return 0
       fi
@@ -120,7 +126,10 @@ podman_machine_init() {
         ui_error "Podman machine re-initialization failed: $init_output"
         return 1
       fi
-      podman system connection default "$machine_name" >/dev/null 2>&1 || true
+      if ! podman system connection default "$machine_name" >/dev/null 2>&1; then
+        ui_error "Failed to set default system connection to '$machine_name'"
+        return 1
+      fi
       ui_success "Podman machine '$machine_name' initialized after recovery"
       return 0
     fi
@@ -128,7 +137,10 @@ podman_machine_init() {
     return 1
   fi
 
-  podman system connection default "$machine_name" >/dev/null 2>&1 || true
+  if ! podman system connection default "$machine_name" >/dev/null 2>&1; then
+    ui_error "Failed to set default system connection to '$machine_name'"
+    return 1
+  fi
   ui_success "Podman machine '$machine_name' initialized"
   return 0
 }
@@ -139,7 +151,12 @@ podman_machine_start() {
   local memory_mb="${3:-8192}"
   local disk_gb="${4:-60}"
 
-  podman system connection default "$machine_name" >/dev/null 2>&1 || true
+  if podman system connection list --format '{{.Name}}' 2>/dev/null | grep -qx "$machine_name"; then
+    if ! podman system connection default "$machine_name" >/dev/null 2>&1; then
+      ui_error "Failed to set default system connection to '$machine_name'"
+      return 1
+    fi
+  fi
 
   if podman_machine_running "$machine_name" && podman info >/dev/null 2>&1; then
     ui_success "Podman machine '$machine_name' is already running and responsive"
@@ -167,14 +184,16 @@ podman_machine_start() {
     fi
   fi
 
-  podman system connection default "$machine_name" >/dev/null 2>&1 || true
+  if ! podman system connection default "$machine_name" >/dev/null 2>&1; then
+    ui_error "Failed to set default system connection to '$machine_name'"
+    return 1
+  fi
 
   # Wait for the machine to be ready
   local timeout=60
   local elapsed=0
   ui_step "Waiting for Podman service readiness..."
   while ! podman info >/dev/null 2>&1; do
-    podman system connection default "$machine_name" >/dev/null 2>&1 || true
     sleep 2
     elapsed=$((elapsed + 2))
     if (( elapsed >= timeout )); then
