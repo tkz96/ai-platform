@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from ai_platform.config import resolve_platform
+from ai_platform.config import _parse_dotenv, resolve_platform
 from ai_platform.diagnostics import DiagnosticResult, redact_text
 from ai_platform.nodes import NodeRegistryManager
 from ai_platform.probe import probe_http, probe_tcp
@@ -439,10 +440,19 @@ def test_completion(
 
     start_time = time.perf_counter()
     req_bytes = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if target == "litellm":
+        master_key = os.environ.get("LITELLM_MASTER_KEY", "")
+        if not master_key:
+            env_dict = _parse_dotenv(PROJECT_ROOT / ".env")
+            master_key = env_dict.get("LITELLM_MASTER_KEY", "")
+        if master_key:
+            headers["Authorization"] = f"Bearer {master_key}"
+
     req = urllib.request.Request(
         endpoint_url,
         data=req_bytes,
-        headers={"Content-Type": "application/json", "Authorization": "Bearer sk-platform-test"},
+        headers=headers,
     )
 
     try:
