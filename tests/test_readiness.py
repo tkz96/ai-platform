@@ -145,12 +145,33 @@ def test_check_deploy_readiness(tmp_path: Path):
 
 
 def test_check_verify_readiness(tmp_path: Path):
-    with patch("socket.create_connection") as mock_conn:
-        mock_conn.return_value.__enter__.return_value = None
+    with (
+        patch("ai_platform.config.resolve_platform"),
+        patch("ai_platform.verify.verify_platform") as mock_verify,
+    ):
+        mock_verify.return_value = {
+            "local_services": [{"name": "postgres", "passed": True}],
+            "remote_inference": [{"node_id": "node-01", "passed": True}],
+            "e2e_completion": {"passed": True, "status": "HTTP 200 (15ms)"},
+            "is_ready": True,
+        }
         status, details, err = check_verify_readiness(tmp_path)
         assert status == "completed"
-        assert details["open_ports"] == 6
+        assert details["is_ready"] is True
         assert err is None
+
+        # Test failure case
+        mock_verify.return_value = {
+            "local_services": [{"name": "postgres", "passed": True}],
+            "remote_inference": [{"node_id": "node-01", "passed": False}],
+            "e2e_completion": {"passed": False, "status": "FAILED (offline)"},
+            "is_ready": False,
+        }
+        status, details, err = check_verify_readiness(tmp_path)
+        assert status == "pending"
+        assert details["is_ready"] is False
+        assert err is not None
+        assert "inference nodes offline" in err
 
 
 def test_check_empirical_phase_status_dispatch(tmp_path: Path):

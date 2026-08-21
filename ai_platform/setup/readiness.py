@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import socket
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -258,20 +257,48 @@ def check_deploy_readiness(project_root: Path) -> tuple[str, dict[str, Any], str
 
 
 def check_verify_readiness(project_root: Path) -> tuple[str, dict[str, Any], str | None]:
-    """Empirically inspect verification ports and services."""
-    ports = [8080, 4000, 3000, 5432, 8123, 6379]
-    open_count = 0
-    for p in ports:
-        try:
-            with socket.create_connection(("127.0.0.1", p), timeout=0.3):
-                open_count += 1
-        except Exception:
-            pass
+    """Empirically inspect verification via authoritative platform verification."""
+    try:
+        from ai_platform.config import resolve_platform
+        from ai_platform.verify import verify_platform
 
-    details = {"open_ports": open_count, "total_ports": len(ports)}
-    if open_count == len(ports):
-        return "completed", details, None
-    return "pending", details, f"Verification pending ({open_count}/{len(ports)} ports responding)"
+        resolved = resolve_platform(project_root)
+        results = verify_platform(resolved, root_dir=project_root)
+
+        is_ready = bool(results.get("is_ready", False))
+        local_passed = sum(1 for s in results.get("local_services", []) if s.get("passed"))
+        local_total = len(results.get("local_services", []))
+        remote_passed = sum(1 for n in results.get("remote_inference", []) if n.get("passed"))
+        remote_total = len(results.get("remote_inference", []))
+        e2e_passed = bool(results.get("e2e_completion", {}).get("passed", False))
+
+        details = {
+            "is_ready": is_ready,
+            "local_services_passed": f"{local_passed}/{local_total}",
+            "remote_nodes_passed": f"{remote_passed}/{remote_total}",
+            "e2e_completion": results.get("e2e_completion", {}).get("status", "N/A"),
+        }
+
+        if is_ready:
+            return "completed", details, None
+
+        reasons = []
+        if local_passed < local_total:
+            reasons.append(f"local services pending ({local_passed}/{local_total})")
+        if remote_passed < remote_total:
+            reasons.append(f"inference nodes offline ({remote_passed}/{remote_total})")
+        if not e2e_passed:
+            e2e_status = results.get("e2e_completion", {}).get("status", "failed")
+            reasons.append(f"E2E model routing not verified ({e2e_status})")
+
+        err_msg = (
+            "Verification pending: " + ", ".join(reasons)
+            if reasons
+            else "Platform not fully verified"
+        )
+        return "pending", details, err_msg
+    except Exception as e:
+        return "pending", {"error": str(e)}, f"Verification inspection error: {e}"
 
 
 def check_empirical_phase_status(
